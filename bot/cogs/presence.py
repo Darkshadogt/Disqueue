@@ -2,8 +2,8 @@ from discord.ext import commands
 import discord
 import asyncio
 
-GAME_START_GRACE_PERIOD = 10
-GAME_STOP_GRACE_PERIOD = 60
+GAME_START_GRACE_PERIOD = 90
+GAME_STOP_GRACE_PERIOD = 120
 
 class Presence(commands.Cog):
     def __init__(self, bot):
