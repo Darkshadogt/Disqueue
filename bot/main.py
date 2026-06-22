@@ -10,7 +10,8 @@ intents.members = True
 bot = commands.Bot(command_prefix='/', intents=intents)
 cogs = [
     "cogs.general",
-    "cogs.presence"
+    "cogs.presence",
+    "cogs.matching"
 ]
 
 async def main():
