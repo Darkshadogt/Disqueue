@@ -19,18 +19,18 @@ class Presence(commands.Cog):
             if userID not in self.session:
                 self.session[userID] = {
                     gameName : {
-                        "startTime" : startTime, 
-                        "partySize" : partySize, 
-                        "maxPartySize" : maxPartySize
+                        "start_time" : startTime, 
+                        "party_size" : partySize, 
+                        "max_party_size" : maxPartySize
                     }
                 }
                 print(f"{userID} started playing {gameName}")
             else:
                 if gameName not in self.session[userID]:
                     self.session[userID][gameName] = {
-                        "startTime" : startTime, 
-                        "partySize" : partySize, 
-                        "maxPartySize" : maxPartySize
+                        "start_time" : startTime, 
+                        "party_size" : partySize, 
+                        "max_party_size" : maxPartySize
                     }
                     print(f"{userID} started playing {gameName}")
     
