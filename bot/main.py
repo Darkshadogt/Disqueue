@@ -11,7 +11,8 @@ bot = commands.Bot(command_prefix='/', intents=intents)
 cogs = [
     "cogs.general",
     "cogs.presence",
-    "cogs.matching"
+    "cogs.matching",
+    "cogs.preferences"
 ]
 
 async def main():

@@ -13,15 +13,25 @@ class Presence(commands.Cog):
     # Confirms a game session is genuine before recording it
     # Waits before adding to session to filter out accidental launches
     # and focus-detection noise from Discord's activity tracking
-    async def verify_session_start(self, update, userID, gameName, startTime):
+    async def verify_session_start(self, update, userID, gameName, startTime, partySize, maxPartySize):
         await asyncio.sleep(GAME_START_GRACE_PERIOD)   
         if any(gameName == game[0] for game in update):
             if userID not in self.session:
-                self.session[userID] = {gameName: startTime}
+                self.session[userID] = {
+                    gameName : {
+                        "startTime" : startTime, 
+                        "partySize" : partySize, 
+                        "maxPartySize" : maxPartySize
+                    }
+                }
                 print(f"{userID} started playing {gameName}")
             else:
                 if gameName not in self.session[userID]:
-                    self.session[userID][gameName] = startTime
+                    self.session[userID][gameName] = {
+                        "startTime" : startTime, 
+                        "partySize" : partySize, 
+                        "maxPartySize" : maxPartySize
+                    }
                     print(f"{userID} started playing {gameName}")
     
     # Confirms a game session has genuinely ended before removing it
@@ -41,13 +51,16 @@ class Presence(commands.Cog):
     @commands.Cog.listener()
     async def on_presence_update(self, before, after):
         userID = before.id
-        update = [(game.name, game.start) for game in after.activities if game.type == discord.ActivityType.playing]
+        update = [(game.name, game.start, game.party) for game in after.activities if game.type == discord.ActivityType.playing]
 
         # Add or update active games for this user
         for currentGame in update:
             gameName = currentGame[0]
             startTime = currentGame[1]
-            asyncio.create_task(self.verify_session_start(update, userID, gameName, startTime))
+            party = currentGame[2]
+            partySize = party.get("current", 1) if party else 1
+            maxPartySize = party.get("max", None) if party else None
+            asyncio.create_task(self.verify_session_start(update, userID, gameName, startTime, partySize, maxPartySize))
 
         # Remove games the user is no longer playing
         if userID in self.session:
