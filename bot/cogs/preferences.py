@@ -153,51 +153,51 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"{user.display_name} has been unblocked and can be matched with you again.", ephemeral=True)
     
     @app_commands.command(name="blockid", description="Block a user by their ID from being matched with you")
-    async def blockID(self, interaction: discord.Interaction, ID: int):
+    async def blockID(self, interaction: discord.Interaction, user_id: int):
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
-        if ID == userID:
+        if user_id == userID:
             await interaction.response.send_message("You can't block yourself.", ephemeral=True)
             return
 
-        if ID in preferences["global"]["blocklist"]:
+        if user_id in preferences["global"]["blocklist"]:
             await interaction.response.send_message("That user is already blocked.", ephemeral=True)
             return
 
         try:
-            user = await self.bot.fetch_user(ID)
+            user = await self.bot.fetch_user(user_id)
         except discord.NotFound:
             await interaction.response.send_message("No Discord user found with that ID.", ephemeral=True)
             return
 
-        preferences["global"]["blocklist"].append(ID)
+        preferences["global"]["blocklist"].append(user_id)
         await interaction.response.send_message(f"{user.display_name} has been blocked.", ephemeral=True)
 
 
     @app_commands.command(name="unblockid", description="Unblock a user by their ID so they can be matched with you again")
-    async def unblockID(self, interaction: discord.Interaction, ID: int):
+    async def unblockID(self, interaction: discord.Interaction, user_id: int):
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
-        if ID == userID:
+        if user_id == userID:
             await interaction.response.send_message("You can't unblock yourself.", ephemeral=True)
             return
 
-        if ID not in preferences["global"]["blocklist"]:
+        if user_id not in preferences["global"]["blocklist"]:
             await interaction.response.send_message("That user is not in your blocklist.", ephemeral=True)
             return
 
         try:
-            user = await self.bot.fetch_user(ID)
+            user = await self.bot.fetch_user(user_id)
         except discord.NotFound:
             # If ID exists in blocklist but user no longer exists on Discord,
             # still remove it from the blocklist
-            preferences["global"]["blocklist"].remove(ID)
+            preferences["global"]["blocklist"].remove(user_id)
             await interaction.response.send_message("User removed from your blocklist.", ephemeral=True)
             return
 
-        preferences["global"]["blocklist"].remove(ID)
+        preferences["global"]["blocklist"].remove(user_id)
         await interaction.response.send_message(f"{user.display_name} has been unblocked.", ephemeral=True)
 
     @app_commands.command(name="set-match-limit", description="Sets the number of matches a user can be matched in a day")
@@ -278,18 +278,18 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"Your preferred timezone has been set to {timezone.name}.", ephemeral=True)
 
     @app_commands.command(name="set-dnd", description="Sets what time you would like to stop being matched")
-    @app_commands.choices(startTime=HOURS, endTime = HOURS)
-    async def setDND(self, interaction : discord.Interaction, startTime : app_commands.Choice[str], endTime : app_commands.Choice[str]):
+    @app_commands.choices(start_time = HOURS, end_time = HOURS)
+    async def setDND(self, interaction : discord.Interaction, start_time : app_commands.Choice[str], end_time : app_commands.Choice[str]):
         user_id = interaction.user.id
         preferences = self.get_preferences(user_id)
 
-        if startTime.value == endTime.value:
+        if start_time.value == end_time.value:
             await interaction.response.send_message("Start and end time can't be the same.", ephemeral=True)
             return
         
-        preferences["time"]["dnd_start"] = startTime.value
-        preferences["time"]["dnd_end"] = endTime.value
-        await interaction.response.send_message(f"Your preferred DND time has been set from {startTime.name} to {endTime.name}.", ephemeral=True)
+        preferences["time"]["dnd_start"] = start_time.value
+        preferences["time"]["dnd_end"] = end_time.value
+        await interaction.response.send_message(f"Your preferred DND time has been set from {start_time.name} to {end_time.name}.", ephemeral=True)
     
     @app_commands.command(name="set-bio", description="Set a short bio visible to matched players")
     async def setBio(self, interaction: discord.Interaction, bio: str):
