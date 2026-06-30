@@ -13,10 +13,11 @@ cogs = [
     "cogs.general",
     "cogs.presence",
     "cogs.preferences",
+    "cogs.matching",
 ]
 
 
-async def setup_hook():
+async def setup_hook() -> None:
     for cog in cogs:
         await bot.load_extension(cog)
 
@@ -28,12 +29,12 @@ bot.setup_hook = setup_hook
 
 
 @bot.event
-async def on_ready():
+async def on_ready() -> None:
     print(f"Logged in as {bot.user}")
     for guild in bot.guilds:
         print(f"Connected to: {guild.name}")
 
-async def main():
+async def main() -> None:
     async with bot:
         await bot.start(token)
 

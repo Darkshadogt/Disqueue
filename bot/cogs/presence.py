@@ -6,14 +6,22 @@ GAME_START_GRACE_PERIOD = 90
 GAME_STOP_GRACE_PERIOD = 120
 
 class Presence(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.session = {}
+        self.session: dict[int, dict[str, dict[str, object]]] = {}
     
     # Confirms a game session is genuine before recording it
     # Waits before adding to session to filter out accidental launches
     # and focus-detection noise from Discord's activity tracking
-    async def verify_session_start(self, update, userID, gameName, startTime, partySize, maxPartySize):
+    async def verify_session_start(
+        self,
+        update: list[tuple[str, object, object]],
+        userID: int,
+        gameName: str,
+        startTime: object,
+        partySize: int,
+        maxPartySize: int | None,
+    ) -> None:
         await asyncio.sleep(GAME_START_GRACE_PERIOD)   
         if any(gameName == game[0] for game in update):
             if userID not in self.session:
@@ -37,7 +45,7 @@ class Presence(commands.Cog):
     # Confirms a game session has genuinely ended before removing it
     # Waits before removing from session to account for brief focus switches
     # where Discord temporarily drops the activity before restoring it
-    async def verify_session_end(self, userID, gameName):
+    async def verify_session_end(self, userID: int, gameName: str) -> None:
         await asyncio.sleep(GAME_STOP_GRACE_PERIOD)
         if userID in self.session and gameName in self.session[userID]:
             self.session[userID].pop(gameName)
@@ -49,9 +57,13 @@ class Presence(commands.Cog):
                 del self.session[userID]
 
     @commands.Cog.listener()
-    async def on_presence_update(self, before, after):
+    async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
         userID = before.id
-        update = [(game.name, game.start, game.party) for game in after.activities if game.type == discord.ActivityType.playing]
+        update: list[tuple[str, object, object]] = [
+            (game.name, game.start, game.party)
+            for game in after.activities
+            if game.type == discord.ActivityType.playing
+        ]
 
         # Add or update active games for this user
         for currentGame in update:
@@ -72,5 +84,5 @@ class Presence(commands.Cog):
                 asyncio.create_task(self.verify_session_end(userID, gameName))
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Presence(bot))

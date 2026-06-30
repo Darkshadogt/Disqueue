@@ -60,23 +60,23 @@ HOURS = [
 ]
 
 class Preferences(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.preferences = {}
 
-    def get_preferences(self, userID):
+    def get_preferences(self, userID: int) -> dict:
         if userID not in self.preferences:
             self.preferences[userID] = copy.deepcopy(DEFAULT_PREFERENCES)
         return self.preferences[userID]
 
     @app_commands.command(name="reset", description="Reset your user preferences")
-    async def reset(self, interaction : discord.Interaction):
+    async def reset(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id
         self.preferences[userID] = copy.deepcopy(DEFAULT_PREFERENCES)
         await interaction.response.send_message("Your preferences has been reset.", ephemeral=True)
 
     @app_commands.command(name="preferences", description="View your current preferences")
-    async def viewPreferences(self, interaction: discord.Interaction):
+    async def viewPreferences(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         
@@ -111,21 +111,21 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="enable", description="Start receiving match notifications")
-    async def enable(self, interaction : discord.Interaction):
+    async def enable(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["global"]["enabled"] = True
         await interaction.response.send_message("Matching enabled — you'll now be notified when someone's playing the same game as you.", ephemeral=True)
 
     @app_commands.command(name="disable", description="Stop receiving match notifications")
-    async def disable(self, interaction : discord.Interaction):
+    async def disable(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["global"]["enabled"] = False
         await interaction.response.send_message("Matching disabled — you won't receive any match notifications.", ephemeral=True)
     
     @app_commands.command(name="block", description="Block a user from being matched with you")
-    async def block(self, interaction : discord.Interaction, user : discord.Member):
+    async def block(self, interaction: discord.Interaction, user: discord.Member) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         
@@ -141,7 +141,7 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"{user.display_name} has been added to your blocklist.", ephemeral=True)
     
     @app_commands.command(name="unblock", description="Unblock a user so they can be matched with you again")
-    async def unblock(self, interaction: discord.Interaction, user: discord.Member):
+    async def unblock(self, interaction: discord.Interaction, user: discord.Member) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
@@ -153,7 +153,7 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"{user.display_name} has been unblocked and can be matched with you again.", ephemeral=True)
     
     @app_commands.command(name="blockid", description="Block a user by their ID from being matched with you")
-    async def blockID(self, interaction: discord.Interaction, user_id: int):
+    async def blockID(self, interaction: discord.Interaction, user_id: int) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
@@ -176,7 +176,7 @@ class Preferences(commands.Cog):
 
 
     @app_commands.command(name="unblockid", description="Unblock a user by their ID so they can be matched with you again")
-    async def unblockID(self, interaction: discord.Interaction, user_id: int):
+    async def unblockID(self, interaction: discord.Interaction, user_id: int) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
@@ -201,7 +201,7 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"{user.display_name} has been unblocked.", ephemeral=True)
 
     @app_commands.command(name="set-match-limit", description="Sets the number of matches a user can be matched in a day")
-    async def setMatchLimit(self, interaction : discord.Interaction, limit: Optional[int] = None):
+    async def setMatchLimit(self, interaction: discord.Interaction, limit: Optional[int] = None) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
@@ -217,7 +217,7 @@ class Preferences(commands.Cog):
             await interaction.response.send_message(f"Match limit set to {limit} per day.", ephemeral=True)
     
     @app_commands.command(name="set-match-cooldown", description="Sets the amount of time in minutes needed before being matched again")
-    async def setMatchCooldown(self, interaction : discord.Interaction, time : int):
+    async def setMatchCooldown(self, interaction: discord.Interaction, time: int) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
@@ -229,7 +229,7 @@ class Preferences(commands.Cog):
         await interaction.response.send_message(f"Match cooldown set to {time} minutes.", ephemeral=True)
 
     @app_commands.command(name="match-confirmation", description="Toggle whether you confirm or auto-accept matches")
-    async def matchConfirmation(self, interaction: discord.Interaction, setting: Literal["on", "off"]):
+    async def matchConfirmation(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["global"]["match_confirmation_required"] = setting == "on"
@@ -240,14 +240,14 @@ class Preferences(commands.Cog):
     
     @app_commands.command(name="set-game-mode", description="Selects which mode you want to be matched for")
     @app_commands.choices(mode=MODES)
-    async def setGameMode(self, interaction : discord.Interaction, mode : app_commands.Choice[str]):
+    async def setGameMode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
         user_id = interaction.user.id
         preferences = self.get_preferences(user_id)
         preferences["matching"]["game_mode"] = mode.value
         await interaction.response.send_message(f"Your preferred mode has been set to {mode.name}.", ephemeral=True)
     
     @app_commands.command(name="dm-notifications", description="Toggle DM notifications for matches")
-    async def dmNotifications(self, interaction: discord.Interaction, setting: Literal["on", "off"]):
+    async def dmNotifications(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["notifications"]["dm_enabled"] = setting == "on"
@@ -255,7 +255,7 @@ class Preferences(commands.Cog):
 
 
     @app_commands.command(name="channel-ping", description="Toggle match notification pings in server channels")
-    async def channelPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]):
+    async def channelPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["notifications"]["channel_ping_enabled"] = setting == "on"
@@ -263,7 +263,7 @@ class Preferences(commands.Cog):
 
 
     @app_commands.command(name="friend-notifications", description="Toggle notifications when friends start playing the same game")
-    async def friendPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]):
+    async def friendPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
         preferences["notifications"]["friend_online_enabled"] = setting == "on"
@@ -271,7 +271,7 @@ class Preferences(commands.Cog):
     
     @app_commands.command(name="set-timezone", description="Sets your timezone for better matching")
     @app_commands.choices(timezone=TIMEZONES)
-    async def setTimezone(self, interaction : discord.Interaction, timezone : app_commands.Choice[str]):
+    async def setTimezone(self, interaction: discord.Interaction, timezone: app_commands.Choice[str]) -> None:
         user_id = interaction.user.id
         preferences = self.get_preferences(user_id)
         preferences["time"]["timezone"] = timezone.value
@@ -279,7 +279,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="set-dnd", description="Sets what time you would like to stop being matched")
     @app_commands.choices(start_time = HOURS, end_time = HOURS)
-    async def setDND(self, interaction : discord.Interaction, start_time : app_commands.Choice[str], end_time : app_commands.Choice[str]):
+    async def setDND(self, interaction: discord.Interaction, start_time: app_commands.Choice[str], end_time: app_commands.Choice[str]) -> None:
         user_id = interaction.user.id
         preferences = self.get_preferences(user_id)
 
@@ -291,21 +291,30 @@ class Preferences(commands.Cog):
         preferences["time"]["dnd_end"] = end_time.value
         await interaction.response.send_message(f"Your preferred DND time has been set from {start_time.name} to {end_time.name}.", ephemeral=True)
     
+    @app_commands.command(name="unset-dnd", description="Unsets your DND time")
+    async def unsetDND(self, interaction: discord.Interaction) -> None:
+        user_id = interaction.user.id
+        preferences = self.get_preferences(user_id)
+
+        preferences["time"]["dnd_start"] = None
+        preferences["time"]["dnd_end"] = None
+        await interaction.response.send_message(f"Your DND time has been unset.", ephemeral=True)
+        
     @app_commands.command(name="set-bio", description="Set a short bio visible to matched players")
-    async def setBio(self, interaction: discord.Interaction, bio: str):
+    async def setBio(self, interaction: discord.Interaction, bio: str) -> None:
         pass
 
     @app_commands.command(name="set-language", description="Set your preferred language for matching")
-    async def setLanguage(self, interaction: discord.Interaction, language: str):
+    async def setLanguage(self, interaction: discord.Interaction, language: str) -> None:
         pass
 
     @app_commands.command(name="set-region", description="Set your region for better matching")
-    async def setRegion(self, interaction: discord.Interaction, region: str):
+    async def setRegion(self, interaction: discord.Interaction, region: str) -> None:
         pass
 
     @app_commands.command(name="set-name", description="Set a display name for your matching profile")
-    async def setName(self, interaction: discord.Interaction, name: str):
+    async def setName(self, interaction: discord.Interaction, name: str) -> None:
         pass
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Preferences(bot))
