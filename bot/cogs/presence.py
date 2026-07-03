@@ -13,34 +13,31 @@ class Presence(commands.Cog):
     # Confirms a game session is genuine before recording it
     # Waits before adding to session to filter out accidental launches
     # and focus-detection noise from Discord's activity tracking
-    async def verify_session_start(
-        self,
-        update: list[tuple[str, object, object]],
-        userID: int,
-        gameName: str,
-        startTime: object,
-        partySize: int,
-        maxPartySize: int | None,
-    ) -> None:
-        await asyncio.sleep(GAME_START_GRACE_PERIOD)   
+    async def verify_session_start(self, update, userID, gameName, startTime, partySize, maxPartySize):
+        await asyncio.sleep(GAME_START_GRACE_PERIOD)
         if any(gameName == game[0] for game in update):
+            matching = self.bot.get_cog("Matching")
             if userID not in self.session:
                 self.session[userID] = {
-                    gameName : {
-                        "start_time" : startTime, 
-                        "party_size" : partySize, 
-                        "max_party_size" : maxPartySize
+                    gameName: {
+                        "start_time": startTime,
+                        "party_size": partySize,
+                        "max_party_size": maxPartySize
                     }
                 }
                 print(f"{userID} started playing {gameName}")
+                if matching:
+                    await matching.check_for_match(userID, gameName)
             else:
                 if gameName not in self.session[userID]:
                     self.session[userID][gameName] = {
-                        "start_time" : startTime, 
-                        "party_size" : partySize, 
-                        "max_party_size" : maxPartySize
+                        "start_time": startTime,
+                        "party_size": partySize,
+                        "max_party_size": maxPartySize
                     }
                     print(f"{userID} started playing {gameName}")
+                    if matching:
+                        await matching.check_for_match(userID, gameName)
     
     # Confirms a game session has genuinely ended before removing it
     # Waits before removing from session to account for brief focus switches
