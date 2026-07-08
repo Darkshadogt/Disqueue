@@ -1,8 +1,9 @@
 from discord.ext import commands
+from discord import app_commands
 import discord
 import datetime
-import asyncio
 from zoneinfo import ZoneInfo
+
 
 TIMEZONE = {
     "utc": ZoneInfo("UTC"),
@@ -19,26 +20,91 @@ TIMEZONE = {
     "aest": ZoneInfo("Australia/Sydney"),
 }
 
+DISQUEUE_SERVER_INVITE = "https://discord.gg/..."
+
+
+class MatchConfirmationView(discord.ui.View):
+    # Per-user confirmation view shown in DM for a single pending match
+    def __init__(
+        self,
+        matching: "Matching",
+        pairKey: frozenset[int],
+        userID: int,
+        otherUserID: int,
+        gameName: str,
+        timeout: float = 300,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self.matching = matching
+        self.pairKey = pairKey
+        self.userID = userID
+        self.otherUserID = otherUserID
+        self.gameName = gameName
+
+    def disable_buttons(self) -> None:
+        # Disable the view once the request is resolved so the buttons cannot be reused
+        for item in self.children:
+            item.disabled = True
+
+    async def on_timeout(self) -> None:
+        # Expired requests are cleaned up by the cog so they do not stay pending forever
+        await self.matching.handle_match_timeout(self.pairKey, self.userID, self.otherUserID, self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Only the intended recipient can respond to this DM prompt
+        if interaction.user.id != self.userID:
+            await interaction.response.send_message(
+                "These match buttons are only for the intended recipient.",
+                ephemeral=True,
+            )
+            return False
+
+        return True
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.green)
+    async def accept_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        await self.matching.handle_match_response(interaction, self.pairKey, self.userID, True, self)
+
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.red)
+    async def decline_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        await self.matching.handle_match_response(interaction, self.pairKey, self.userID, False, self)
+
+
 class Matching(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.matchHistory: dict[frozenset[int], datetime.datetime] = {}
+        self.matchHistory: dict[frozenset[int], dict[str, object]] = {}
         self.dailyMatchCounts: dict[int, dict[str, int]] = {}
         self.lastMatchTime: dict[int, datetime.datetime] = {}
+        self.pendingMatches: dict[frozenset[int], dict[str, object]] = {}
 
-    # Custom embeds sent to users for matching
-    def build_match_embed(self, user: discord.User, otherUser: discord.User, gameName: str) -> discord.Embed:
-        preferences = self.bot.get_cog("Preferences")
-        userPreferences = preferences.get_preferences(user.id) if preferences else None
-        otherUserPreferences = preferences.get_preferences(otherUser.id) if preferences else None
+    def build_match_embed(
+        self,
+        user: discord.User,
+        otherUser: discord.User,
+        gameName: str,
+        statusText: str = "Pending other player's confirmation",
+    ) -> discord.Embed:
+        # Build the DM embed with both players' profile details
+        preferencesCog = self.bot.get_cog("Preferences")
+        userPreferences = preferencesCog.get_preferences(user.id) if preferencesCog else None
+        otherUserPreferences = preferencesCog.get_preferences(otherUser.id) if preferencesCog else None
 
         userProfile = userPreferences["profile"] if userPreferences else {}
-        other_user_profile = otherUserPreferences["profile"] if otherUserPreferences else {}
+        otherUserProfile = otherUserPreferences["profile"] if otherUserPreferences else {}
 
         userBio = userProfile.get("bio") or "Not set"
         userRegion = userProfile.get("region") or "Not set"
-        otherUserBio = other_user_profile.get("bio") or "Not set"
-        otherUserRegion = other_user_profile.get("region") or "Not set"
+        otherUserBio = otherUserProfile.get("bio") or "Not set"
+        otherUserRegion = otherUserProfile.get("region") or "Not set"
 
         embed = discord.Embed(
             title="Match Found",
@@ -62,41 +128,101 @@ class Matching(commands.Cog):
             value=f"Bio: {otherUserBio}\nRegion: {otherUserRegion}",
             inline=True,
         )
+        embed.add_field(
+            name="Status",
+            value=statusText,
+            inline=False,
+        )
         embed.set_footer(text="Disqueue Matchmaking")
         return embed
-    
-    # Retrieves users currently playing the certain game
+
+    def build_confirmed_match_embed(self, user: discord.User, otherUser: discord.User, gameName: str) -> discord.Embed:
+        # Reuse the base match embed, then add connection instructions only after both users accept
+        embed = self.build_match_embed(user, otherUser, gameName, statusText="Confirmed")
+        embed.add_field(
+            name="How to connect",
+            value=(
+                f"Now that the match is confirmed for both of you, join our hub server to chat: {DISQUEUE_SERVER_INVITE}\n"
+                f"Or add them directly on Discord: `{otherUser.name}`"
+            ),
+            inline=False,
+        )
+        return embed
+
+    def _match_key(self, userID: int, otherUserID: int) -> frozenset[int]:
+        return frozenset((userID, otherUserID))
+
+    def _match_confirmation_required(self, userID: int) -> bool:
+        # Fall back to confirmation enabled if preferences are unavailable
+        preferencesCog = self.bot.get_cog("Preferences")
+        if preferencesCog is None:
+            return False
+
+        userPreferences = preferencesCog.get_preferences(userID)
+        return userPreferences["global"]["match_confirmation_required"]
+
+    def _create_confirmation_view(
+        self,
+        pairKey: frozenset[int],
+        userID: int,
+        otherUserID: int,
+        gameName: str,
+    ) -> MatchConfirmationView:
+        return MatchConfirmationView(self, pairKey, userID, otherUserID, gameName)
+
+    def _disable_view(self, view: MatchConfirmationView | None) -> None:
+        # Guard helper for optional views stored in the pending match state
+        if view is not None:
+            view.disable_buttons()
+
+    async def _edit_message(
+        self,
+        message: discord.Message | None,
+        content: str | None,
+        view: MatchConfirmationView | None,
+        embed: discord.Embed | None = None,
+    ) -> None:
+        if message is None:
+            return
+
+        try:
+            await message.edit(content=content, embed=embed, view=view)
+        except discord.HTTPException:
+            pass
+
     def get_eligible_users(self, gameName: str) -> list[int]:
-        presence = self.bot.get_cog("Presence")
-        if not presence:
+        # Read the active presence session and return users currently playing the same game
+        presenceCog = self.bot.get_cog("Presence")
+        if not presenceCog:
             return []
 
-        session = presence.session
+        session = presenceCog.session
         return [userID for userID, games in session.items() if gameName in games]
 
-    # Checks if the user has DND enabled
-    def checkDND(self, userID : int) -> bool:
+    def checkDND(self, userID: int) -> bool:
+        # Respect each user's quiet hours before creating a match
         preferencesCog = self.bot.get_cog("Preferences")
         if preferencesCog is None:
             return False
         preferences = preferencesCog.get_preferences(userID)
 
         timezone = preferences["time"]["timezone"]
-        startTime = int(preferences["time"]["dnd_start"])
-        endTime = int(preferences["time"]["dnd_end"])
+        startTime = preferences["time"]["dnd_start"]
+        endTime = preferences["time"]["dnd_end"]
 
         if startTime is None or endTime is None:
             return False
 
         tz = TIMEZONE.get(timezone, ZoneInfo("UTC"))
         userCurrentHour = datetime.datetime.now(tz).hour
+        startHour = int(startTime)
+        endHour = int(endTime)
 
-        if startTime < endTime:
-            return startTime <= userCurrentHour < endTime
+        if startHour < endHour:
+            return startHour <= userCurrentHour < endHour
 
-        return userCurrentHour >= startTime or userCurrentHour < endTime
+        return userCurrentHour >= startHour or userCurrentHour < endHour
 
-    # Checks if user is able to be matched again based on the cooldown
     def check_user_cooldown(self, userID: int, cooldownMinutes: int) -> bool:
         lastMatch = self.lastMatchTime.get(userID)
         if lastMatch is None:
@@ -104,45 +230,38 @@ class Matching(commands.Cog):
         elapsed = datetime.datetime.now(datetime.timezone.utc) - lastMatch
         return elapsed < datetime.timedelta(minutes=cooldownMinutes)
 
-    # Checks if user is able ton be matched again based on their daily limits
-    def check_user_limit(self, userID : int, matchLimit : int) -> bool:
+    def check_user_limit(self, userID: int, matchLimit: int) -> bool:
         day = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
         userCounts = self.dailyMatchCounts.get(userID, {})
         todayCount = userCounts.get(day, 0)
         return todayCount < matchLimit
 
-    # Checks if both users are eligible to be matched together
     def is_eligible(self, userID: int, otherUserID: int, gameName: str) -> bool:
-        preferences = self.bot.get_cog("Preferences")
-        if preferences is None:
+        # Apply all matching rules before a DM is ever sent
+        preferencesCog = self.bot.get_cog("Preferences")
+        if preferencesCog is None:
             return False
 
-        userPreferences = preferences.get_preferences(userID)
-        otherUserPreferences = preferences.get_preferences(otherUserID)
+        userPreferences = preferencesCog.get_preferences(userID)
+        otherUserPreferences = preferencesCog.get_preferences(otherUserID)
 
-        # Check if both users have matching enabled
         if not userPreferences["global"]["enabled"] or not otherUserPreferences["global"]["enabled"]:
             return False
 
-        # Check if both users have DMs enabled
         if not userPreferences["notifications"]["dm_enabled"] or not otherUserPreferences["notifications"]["dm_enabled"]:
             return False
 
-        # Check if either user is in DND
         if self.checkDND(userID) or self.checkDND(otherUserID):
             return False
 
-        # Check blocklists in both directions
         if userID in otherUserPreferences["global"]["blocklist"] or otherUserID in userPreferences["global"]["blocklist"]:
             return False
 
-        # Check cooldown for both users
         if self.check_user_cooldown(userID, userPreferences["global"]["match_cooldown"]):
             return False
         if self.check_user_cooldown(otherUserID, otherUserPreferences["global"]["match_cooldown"]):
             return False
 
-        # Check daily match limit for both users
         if userPreferences["global"]["match_limit"] is not None:
             if not self.check_user_limit(userID, userPreferences["global"]["match_limit"]):
                 return False
@@ -150,24 +269,18 @@ class Matching(commands.Cog):
             if not self.check_user_limit(otherUserID, otherUserPreferences["global"]["match_limit"]):
                 return False
 
-        # Language filter — only apply if both users have explicitly set a language
-        # None means no preference, so skip the filter if either is unset
         userLanguage = userPreferences["profile"]["language"]
         otherUserLanguage = otherUserPreferences["profile"]["language"]
         if userLanguage is not None and otherUserLanguage is not None:
             if userLanguage != otherUserLanguage:
                 return False
 
-        # Game mode filter — only block if neither user is set to "any"
-        # and their specific modes differ
         userGameMode = userPreferences["matching"]["game_mode"]
         otherUserGameMode = otherUserPreferences["matching"]["game_mode"]
         if userGameMode != "any" and otherUserGameMode != "any":
             if userGameMode != otherUserGameMode:
                 return False
 
-        # Region filter — only apply if both users are strictly in ranked mode
-        # (neither set to "any") AND both have explicitly set a region
         userRegion = userPreferences["profile"]["region"]
         otherUserRegion = otherUserPreferences["profile"]["region"]
         bothStrictlyRanked = userGameMode == "ranked" and otherUserGameMode == "ranked"
@@ -177,29 +290,36 @@ class Matching(commands.Cog):
 
         return True
 
-    # Continously matching users and check if their is a match
     async def check_for_match(self, userID: int, gameName: str) -> None:
+        # Find the first eligible partner and start the confirmation flow
         eligibleUsers = self.get_eligible_users(gameName)
 
         if userID in eligibleUsers:
             eligibleUsers.remove(userID)
 
         for otherUserID in eligibleUsers:
+            pairKey = self._match_key(userID, otherUserID)
+            if pairKey in self.pendingMatches:
+                continue
+
             if not self.is_eligible(userID, otherUserID, gameName):
                 continue
 
             if not self.is_eligible(otherUserID, userID, gameName):
                 continue
 
-            self.record_match(userID, otherUserID)
-            await self.send_match_dm(userID, otherUserID, gameName)
-            break
-
-    # Update user information once matched
-    def record_match(self, userID: int, otherUserID: int) -> None:
+            sent = await self.send_match_dm(userID, otherUserID, gameName)
+            if sent:
+                break
+        
+    def record_match(self, userID: int, otherUserID: int, gameName: str) -> None:
+        # Record the match only after both players have confirmed
         users = frozenset((userID, otherUserID))
         currentTime = datetime.datetime.now(datetime.timezone.utc)
-        self.matchHistory[users] = currentTime
+        self.matchHistory[users] = {
+            "time": currentTime,
+            "game": gameName
+        }
 
         day = currentTime.date().isoformat()
         for user in (userID, otherUserID):
@@ -207,24 +327,301 @@ class Matching(commands.Cog):
             self.dailyMatchCounts.setdefault(user, {})
             self.dailyMatchCounts[user][day] = self.dailyMatchCounts[user].get(day, 0) + 1
 
-    # Sent the match notification to both user
-    async def send_match_dm(self, userID: int, otherUserID: int, gameName: str) -> None:
+    async def handle_match_response(
+        self,
+        interaction: discord.Interaction,
+        pairKey: frozenset[int],
+        userID: int,
+        accepted: bool,
+        view: MatchConfirmationView,
+    ) -> None:
+        # Process an accept or decline from one side of a pending match
+        state = self.pendingMatches.get(pairKey)
+        if state is None or state.get("resolved"):
+            await interaction.response.send_message("This match is no longer active.", ephemeral=True)
+            return
+
+        gameName = state["gameName"]
+        choices: dict[int, str] = state["choices"]
+        messages: dict[int, discord.Message] = state["messages"]
+        views: dict[int, MatchConfirmationView] = state["views"]
+        otherUserID = next(uid for uid in pairKey if uid != userID)
+
+        # Retrieve stored user objects
+        storedUser: discord.User = state["user"]
+        storedOtherUser: discord.User = state["otherUser"]
+        currentUser = storedUser if storedUser.id == userID else storedOtherUser
+        currentOtherUser = storedOtherUser if storedUser.id == userID else storedUser
+
+        # Store the user's choice so the second response can complete or cancel the pair
+        choices[userID] = "accepted" if accepted else "declined"
+        self._disable_view(view)
+
+        if not accepted:
+            # One decline cancels the entire pair immediately
+            state["resolved"] = True
+            declinedEmbed = self.build_match_embed(
+                currentUser,
+                currentOtherUser,
+                gameName,
+                statusText="Declined",
+            )
+            await interaction.response.edit_message(view=view, embed=declinedEmbed)
+
+            otherMessage = messages.get(otherUserID)
+            otherView = views.get(otherUserID)
+            self._disable_view(otherView)
+            declinedOtherEmbed = self.build_match_embed(
+                currentOtherUser,
+                currentUser,
+                gameName,
+                statusText="Declined by the other user",
+            )
+            await self._edit_message(otherMessage, None, otherView, declinedOtherEmbed)
+            self.pendingMatches.pop(pairKey, None)
+            return
+
+        acceptedEmbed = self.build_match_embed(
+            currentUser,
+            currentOtherUser,
+            gameName,
+            statusText="Accepted — waiting for the other user",
+        )
+        await interaction.response.edit_message(view=view, embed=acceptedEmbed)
+
+        # If the second player has not responded yet, keep the match pending
+        if len(choices) != 2 or any(choice != "accepted" for choice in choices.values()):
+            return
+
+        # Both users accepted — finalize the match and close out the pending state
+        state["resolved"] = True
+        self.record_match(userID, otherUserID, gameName)
+
+        confirmedUserEmbed = self.build_confirmed_match_embed(currentUser, currentOtherUser, gameName)
+        confirmedOtherEmbed = self.build_confirmed_match_embed(currentOtherUser, currentUser, gameName)
+
+        currentMessage = messages.get(userID)
+        otherMessage = messages.get(otherUserID)
+        currentView = views.get(userID)
+        otherView = views.get(otherUserID)
+
+        self._disable_view(currentView)
+        self._disable_view(otherView)
+
+        await self._edit_message(currentMessage, None, currentView, confirmedUserEmbed)
+        await self._edit_message(otherMessage, None, otherView, confirmedOtherEmbed)
+        self.pendingMatches.pop(pairKey, None)
+
+    async def handle_match_timeout(
+        self,
+        pairKey: frozenset[int],
+        userID: int,
+        otherUserID: int,
+        view: MatchConfirmationView,
+    ) -> None:
+        # Timeout cleanup keeps stale requests from blocking future matches
+        state = self.pendingMatches.get(pairKey)
+        if state is None or state.get("resolved"):
+            return
+
+        state["resolved"] = True
+
+        # Retrieve stored user objects
+        # which can fail silently if the network is unavailable
+        storedUser: discord.User = state["user"]
+        storedOtherUser: discord.User = state["otherUser"]
+        currentUser = storedUser if storedUser.id == userID else storedOtherUser
+        currentOtherUser = storedOtherUser if storedUser.id == userID else storedUser
+
+        messages: dict[int, discord.Message] = state["messages"]
+        views: dict[int, MatchConfirmationView] = state["views"]
+
+        currentMessage = messages.get(userID)
+        currentView = views.get(userID)
+        otherMessage = messages.get(otherUserID)
+        otherView = views.get(otherUserID)
+
+        expiredUserEmbed = self.build_match_embed(
+            currentUser,
+            currentOtherUser,
+            state["gameName"],
+            statusText="Expired after 5 minutes",
+        )
+        expiredOtherEmbed = self.build_match_embed(
+            currentOtherUser,
+            currentUser,
+            state["gameName"],
+            statusText="Expired after 5 minutes",
+        )
+
+        self._disable_view(currentView)
+        self._disable_view(otherView)
+
+        await self._edit_message(currentMessage, None, currentView, expiredUserEmbed)
+        await self._edit_message(otherMessage, None, otherView, expiredOtherEmbed)
+        self.pendingMatches.pop(pairKey, None)
+
+    async def send_match_dm(self, userID: int, otherUserID: int, gameName: str) -> bool:
+        # There are three possible outcomes here:
+        # 1. Neither user requires confirmation, so the match is sent and recorded immediately
+        # 2. One or both users require confirmation, so the DM is sent with Accept/Decline buttons
+        # 3. The request later resolves through accept, decline, or timeout cleanup
         user = await self.bot.fetch_user(userID)
         otherUser = await self.bot.fetch_user(otherUserID)
+
+        pairKey = self._match_key(userID, otherUserID)
+        userRequiresConfirmation = self._match_confirmation_required(userID)
+        otherRequiresConfirmation = self._match_confirmation_required(otherUserID)
+
+        if not userRequiresConfirmation and not otherRequiresConfirmation:
+            # Auto-match path: both players have confirmation disabled, so no pending state is needed
+            # Confirmed embeds are built directly here
+            try:
+                await user.send(embed=self.build_confirmed_match_embed(user, otherUser, gameName))
+            except discord.Forbidden:
+                return False
+
+            try:
+                await otherUser.send(embed=self.build_confirmed_match_embed(otherUser, user, gameName))
+            except discord.Forbidden:
+                # First user already got DM — notify them it was canceled
+                try:
+                    await user.send("Match canceled — the other player's DMs are closed.")
+                except discord.Forbidden:
+                    pass
+                return False
+
+            self.record_match(userID, otherUserID, gameName)
+            return True
+
+        # Build pending embeds only when confirmation is required
+        # avoids constructing embeds that would be immediately discarded in the auto-match path
         userEmbed = self.build_match_embed(user, otherUser, gameName)
         otherUserEmbed = self.build_match_embed(otherUser, user, gameName)
 
-        try:
-            await user.send(embed=userEmbed)
-        except discord.Forbidden:
-            pass
+        # Pending-match path: at least one player must confirm before the match is finalized
+        self.pendingMatches[pairKey] = {
+            "gameName": gameName,
+            "choices": {},
+            "messages": {},
+            "views": {},
+            "resolved": False,
+            "user": user,
+            "otherUser": otherUser,
+        }
+
+        # If a user does not need to confirm, treat that side as already accepted
+        if not userRequiresConfirmation:
+            self.pendingMatches[pairKey]["choices"][userID] = "accepted"
+        if not otherRequiresConfirmation:
+            self.pendingMatches[pairKey]["choices"][otherUserID] = "accepted"
+
+        userView = self._create_confirmation_view(pairKey, userID, otherUserID, gameName) if userRequiresConfirmation else None
+        otherView = self._create_confirmation_view(pairKey, otherUserID, userID, gameName) if otherRequiresConfirmation else None
+
+        userMessage: discord.Message | None = None
 
         try:
-            await otherUser.send(embed=otherUserEmbed)
+            if userView is None:
+                # No button view means this user already auto-accepted, so send a plain embed
+                userMessage = await user.send(embed=userEmbed)
+            else:
+                # Confirmation required: include buttons so the user can accept or decline
+                userMessage = await user.send(embed=userEmbed, view=userView)
+            self.pendingMatches[pairKey]["messages"][userID] = userMessage
+            if userView is not None:
+                self.pendingMatches[pairKey]["views"][userID] = userView
         except discord.Forbidden:
-            pass
+            self.pendingMatches.pop(pairKey, None)
+            return False
+        except discord.HTTPException:
+            self.pendingMatches.pop(pairKey, None)
+            return False
+
+        try:
+            if otherView is None:
+                # Same behavior for the second user: plain embed when auto-accepted
+                otherMessage = await otherUser.send(embed=otherUserEmbed)
+            else:
+                # Confirmation required for this user, so attach the per-user view
+                otherMessage = await otherUser.send(embed=otherUserEmbed, view=otherView)
+            self.pendingMatches[pairKey]["messages"][otherUserID] = otherMessage
+            if otherView is not None:
+                self.pendingMatches[pairKey]["views"][otherUserID] = otherView
+        except discord.Forbidden:
+            self._disable_view(userView)
+            await self._edit_message(
+                userMessage,
+                "Match canceled because the other player could not receive the DM.",
+                userView,
+            )
+            self.pendingMatches.pop(pairKey, None)
+            return False
+        except discord.HTTPException:
+            self._disable_view(userView)
+            await self._edit_message(
+                userMessage,
+                "Match canceled because the other player could not receive the DM.",
+                userView,
+            )
+            self.pendingMatches.pop(pairKey, None)
+            return False
+
+        return True
     
+    @app_commands.command(name="match-history", description="View your recent matches")
+    async def matchHistory(self, interaction: discord.Interaction) -> None:
+        userID = interaction.user.id
+        userMatches = [
+            (pair, data) for pair, data in self.matchHistory.items()
+            if userID in pair
+        ]
 
+        if not userMatches:
+            await interaction.response.send_message("You have no match history yet.", ephemeral=True)
+            return
+
+        userMatches.sort(key=lambda x: x[1]["time"], reverse=True)
+        userMatches = userMatches[:10]
+
+        embed = discord.Embed(
+            title="Your Match History",
+            color=discord.Color.blurple(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+
+        for pair, data in userMatches:
+            otherUserID = next(uid for uid in pair if uid != userID)
+            otherUser = self.bot.get_user(otherUserID)
+            otherName = otherUser.display_name if otherUser else f"User {otherUserID}"
+            embed.add_field(
+                name=f"{otherName} — {data['game']}",
+                value=f"<t:{int(data['time'].timestamp())}:R>",
+                inline=False
+            )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="status", description="See who is currently playing what game")
+    async def status(self, interaction: discord.Interaction) -> None:
+        presenceCog = self.bot.get_cog("Presence")
+        if not presenceCog or not presenceCog.session:
+            await interaction.response.send_message("No one is currently being tracked.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="Currently Playing",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+
+        for currentUserID, games in presenceCog.session.items():
+            user = self.bot.get_user(currentUserID)
+            userName = user.display_name if user else f"User {currentUserID}"
+            gameList = ", ".join(games.keys())
+            embed.add_field(name=userName, value=gameList, inline=False)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Matching(bot))

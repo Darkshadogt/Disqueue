@@ -260,13 +260,18 @@ class Preferences(commands.Cog):
         else:
             await interaction.response.send_message(f"Match limit set to {limit} per day.", ephemeral=True)
     
-    @app_commands.command(name="set-match-cooldown", description="Sets the amount of time in minutes needed before being matched again (Leave time blank to return to default cooldown)")
+    @app_commands.command(name="set-match-cooldown", description="Sets the cooldown time before a user can be matched again")
     async def setMatchCooldown(self, interaction: discord.Interaction, time: Optional[int] = None) -> None:
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
-        if time <= 0:
+        if time is not None and time <= 0:
             await interaction.response.send_message("Cooldown must be a positive number.", ephemeral=True)
+            return
+
+        if time is None:
+            preferences["global"]["match_cooldown"] = DEFAULT_PREFERENCES["global"]["match_cooldown"]
+            await interaction.response.send_message("Match cooldown reset to the default value.", ephemeral=True)
             return
 
         preferences["global"]["match_cooldown"] = time

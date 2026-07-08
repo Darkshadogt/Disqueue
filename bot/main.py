@@ -8,6 +8,7 @@ intents.presences = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='/', intents=intents)
+bot.guild_commands_synced = False
 
 cogs = [
     "cogs.general",
@@ -33,6 +34,21 @@ async def on_ready() -> None:
     print(f"Logged in as {bot.user}")
     for guild in bot.guilds:
         print(f"Connected to: {guild.name}")
+
+    if bot.guild_commands_synced:
+        return
+
+    for guild in bot.guilds:
+        bot.tree.copy_global_to(guild=guild)
+        await bot.tree.sync(guild=guild)
+
+    bot.guild_commands_synced = True
+
+
+@bot.event
+async def on_guild_join(guild: discord.Guild) -> None:
+    bot.tree.copy_global_to(guild=guild)
+    await bot.tree.sync(guild=guild)
 
 async def main() -> None:
     async with bot:
