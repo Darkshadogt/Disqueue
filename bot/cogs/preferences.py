@@ -265,8 +265,8 @@ class Preferences(commands.Cog):
         userID = interaction.user.id
         preferences = self.get_preferences(userID)
 
-        if time is not None and time <= 0:
-            await interaction.response.send_message("Cooldown must be a positive number.", ephemeral=True)
+        if time is not None and time <= 2:
+            await interaction.response.send_message("Cooldown must be at least default cooldown time.", ephemeral=True)
             return
 
         if time is None:

@@ -569,6 +569,27 @@ class Matching(commands.Cog):
 
         return True
     
+    async def on_session_ended(self, departedUserID: int, gameName: str) -> None:
+        # When a player leaves a game, check if any remaining players
+        # need to be re-queued for a new match
+        # Cooldown from is_eligible still applies — players must wait
+        # their configured cooldown before being matched again
+        eligibleUsers = self.get_eligible_users(gameName)
+
+        for userID in eligibleUsers:
+            if userID == departedUserID:
+                continue
+
+            # Skip users who already have an active pending match for any game
+            # to avoid sending a second match DM while they're still deciding
+            hasActivePendingMatch = any(
+                userID in pair for pair in self.pendingMatches
+            )
+            if hasActivePendingMatch:
+                continue
+
+            await self.check_for_match(userID, gameName)
+    
     @app_commands.command(name="match-history", description="View your recent matches")
     async def matchHistory(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id

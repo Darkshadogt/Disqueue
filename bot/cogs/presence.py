@@ -48,6 +48,12 @@ class Presence(commands.Cog):
             self.session[userID].pop(gameName)
             print(f"{userID} stopped playing {gameName}")
 
+            # Notify matching that this user left so remaining players
+            # can be re-queued for a new match after their cooldown expires
+            matching = self.bot.get_cog("Matching")
+            if matching:
+                await matching.on_session_ended(userID, gameName)
+
             # Remove the user entirely once their game dict is empty,
             # to avoid accumulating stale empty entries over time
             if userID in self.session and len(self.session[userID]) == 0:
