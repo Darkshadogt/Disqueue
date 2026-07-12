@@ -42,8 +42,3 @@ app.include_router(users.router)
 app.include_router(preferences.router)
 app.include_router(matches.router)
 app.include_router(live.router)
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
