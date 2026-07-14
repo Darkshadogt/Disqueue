@@ -8,6 +8,7 @@ from backend.config import (
 )
 from backend.auth_utils import create_access_token
 import db.database as db
+from fastapi.responses import RedirectResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -69,11 +70,5 @@ async def callback(code: str):
     # Create a JWT session token for this user
     jwt_token = create_access_token(user_id, username)
 
-    # In production this would redirect to the frontend with the token
-    # For now return it directly so you can test with curl/Postman
-    return {
-        "access_token": jwt_token,
-        "token_type": "bearer",
-        "user_id": user_id,
-        "username": username,
-    }
+    frontend_url = f"http://localhost:5173/callback?access_token={jwt_token}&user_id={user_id}&username={username}"
+    return RedirectResponse(url=frontend_url)
