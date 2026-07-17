@@ -9,6 +9,7 @@ from backend.config import (
 from backend.auth_utils import create_access_token
 import db.database as db
 from fastapi.responses import RedirectResponse
+import urllib.parse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,14 +20,14 @@ DISCORD_USER_URL = "https://discord.com/api/users/@me"
 @router.get("/login")
 async def login():
     # Redirect user to Discord's OAuth2 authorization page
+    encoded_redirect = urllib.parse.quote(DISCORD_REDIRECT_URI, safe="")
     params = (
         f"?client_id={DISCORD_CLIENT_ID}"
-        f"&redirect_uri={DISCORD_REDIRECT_URI}"
+        f"&redirect_uri={encoded_redirect}"
         f"&response_type=code"
         f"&scope=identify"
     )
     return RedirectResponse(url=DISCORD_OAUTH_URL + params)
-
 
 @router.get("/callback")
 async def callback(code: str):
