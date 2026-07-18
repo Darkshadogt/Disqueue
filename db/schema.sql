@@ -1,7 +1,10 @@
 CREATE TABLE IF NOT EXISTS users (
-    user_id         TEXT PRIMARY KEY,
-    avatar          TEXT,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    user_id                    TEXT PRIMARY KEY,
+    avatar                     TEXT,
+    discord_access_token       TEXT,
+    discord_refresh_token      TEXT,
+    discord_token_expires_at   TIMESTAMPTZ,
+    created_at                 TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS user_preferences (

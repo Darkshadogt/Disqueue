@@ -9,6 +9,7 @@ from backend.config import (
 from backend.auth_utils import create_access_token
 import db.database as db
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,14 +25,13 @@ async def login():
         f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri={encoded_redirect}"
         f"&response_type=code"
-        f"&scope=identify"
+        f"&scope=identify+guilds"
     )
     return RedirectResponse(url=DISCORD_OAUTH_URL + params)
 
 
 @router.get("/callback")
 async def callback(code: str):
-    # Exchange authorization code for access token
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
             DISCORD_TOKEN_URL,
@@ -50,8 +50,9 @@ async def callback(code: str):
 
     token_data = token_response.json()
     access_token = token_data["access_token"]
+    refresh_token = token_data["refresh_token"]
+    expires_in = token_data["expires_in"]
 
-    # Fetch Discord user profile
     async with httpx.AsyncClient() as client:
         user_response = await client.get(
             DISCORD_USER_URL,
@@ -63,19 +64,18 @@ async def callback(code: str):
 
     discord_user = user_response.json()
 
-    # Discord snowflake ID as STRING
     user_id = discord_user["id"]
     username = discord_user["username"]
     avatar = discord_user["avatar"]
 
-    # Ensure user exists in DB
     await db.check_user(user_id)
     await db.update_user_profile(user_id, avatar)
 
-    # Create JWT with string user_id
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    await db.store_discord_tokens(user_id, access_token, refresh_token, expires_at)
+
     jwt_token = create_access_token(user_id, username)
 
-    # Redirect to frontend with string ID
     frontend_url = (
         f"http://localhost:5173/callback?"
         f"access_token={jwt_token}&user_id={user_id}&username={username}"

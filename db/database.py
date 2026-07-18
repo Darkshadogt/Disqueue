@@ -164,6 +164,17 @@ async def get_active_sessions(game_name: str) -> list[asyncpg.Record]:
             game_name
         )
 
+async def get_active_sessions_for_user(user_id: str) -> list[asyncpg.Record]:
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT game_name, party_size, max_party_size, started_at
+            FROM game_sessions
+            WHERE user_id = $1 AND ended_at IS NULL
+            """,
+            user_id
+        )
+
 async def get_all_active_sessions() -> list[asyncpg.Record]:
     async with pool.acquire() as conn:
         return await conn.fetch(
@@ -240,3 +251,32 @@ async def check_user(user_id: str) -> asyncpg.Record:
     await create_user(user_id)
     await create_default_preferences(user_id)
     return await get_preferences(user_id)
+
+async def store_discord_tokens(
+    user_id: str,
+    access_token: str,
+    refresh_token: str,
+    expires_at,
+) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE users
+            SET discord_access_token = $1,
+                discord_refresh_token = $2,
+                discord_token_expires_at = $3
+            WHERE user_id = $4
+            """,
+            access_token, refresh_token, expires_at, user_id
+        )
+
+async def get_discord_tokens(user_id: str) -> asyncpg.Record | None:
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            """
+            SELECT discord_access_token, discord_refresh_token, discord_token_expires_at
+            FROM users
+            WHERE user_id = $1
+            """,
+            user_id
+        )
