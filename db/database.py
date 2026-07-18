@@ -116,16 +116,17 @@ async def start_game_session(
     game_name: str,
     party_size: int,
     max_party_size: int | None,
-    started_at
+    started_at,
+    guild_id: str | None = None,
 ) -> int:
     async with pool.acquire() as conn:
         return await conn.fetchval(
             """
-            INSERT INTO game_sessions (user_id, game_name, party_size, max_party_size, started_at)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO game_sessions (user_id, game_name, party_size, max_party_size, started_at, guild_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
             """,
-            user_id, game_name, party_size, max_party_size, started_at
+            user_id, game_name, party_size, max_party_size, started_at, guild_id
         )
 
 async def end_game_session(user_id: str, game_name: str) -> None:
@@ -135,6 +136,19 @@ async def end_game_session(user_id: str, game_name: str) -> None:
             UPDATE game_sessions
             SET ended_at = NOW()
             WHERE user_id = $1 AND game_name = $2 AND ended_at IS NULL
+            """,
+            user_id, game_name
+        )
+
+async def get_session_start(user_id: str, game_name: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            """
+            SELECT started_at, guild_id
+            FROM game_sessions
+            WHERE user_id = $1 AND game_name = $2 AND ended_at IS NULL
+            ORDER BY started_at DESC
+            LIMIT 1
             """,
             user_id, game_name
         )
@@ -156,24 +170,44 @@ async def get_all_active_sessions() -> list[asyncpg.Record]:
             "SELECT user_id, game_name, started_at FROM game_sessions WHERE ended_at IS NULL"
         )
 
-async def record_match(user_id_1: str, user_id_2: str, game_name: str) -> None:
+async def record_match(
+    user_id_1: str,
+    user_id_2: str,
+    game_name: str,
+    cross_server: bool = False,
+    wait_time_1: int | None = None,
+    wait_time_2: int | None = None,
+) -> int:
     async with pool.acquire() as conn:
-        await conn.execute(
+        return await conn.fetchval(
             """
-            INSERT INTO matches (user_id_1, user_id_2, game_name)
-            VALUES ($1, $2, $3)
+            INSERT INTO matches (user_id_1, user_id_2, game_name, cross_server, wait_time_1, wait_time_2)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
             """,
-            user_id_1, user_id_2, game_name
+            user_id_1, user_id_2, game_name, cross_server, wait_time_1, wait_time_2
         )
 
 async def get_match_history(user_id: str, limit: int = 10) -> list[asyncpg.Record]:
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT user_id_1, user_id_2, game_name, matched_at
-            FROM matches
-            WHERE user_id_1 = $1 OR user_id_2 = $1
-            ORDER BY matched_at DESC
+            SELECT
+                m.id,
+                m.game_name,
+                m.matched_at,
+                m.cross_server,
+                CASE WHEN m.user_id_1 = $1 THEN m.user_id_2 ELSE m.user_id_1 END AS other_user_id,
+                CASE WHEN m.user_id_1 = $1 THEN m.wait_time_1 ELSE m.wait_time_2 END AS my_wait_time,
+                other_user.avatar AS other_avatar,
+                other_prefs.display_name AS other_display_name
+            FROM matches m
+            JOIN users other_user
+                ON other_user.user_id = CASE WHEN m.user_id_1 = $1 THEN m.user_id_2 ELSE m.user_id_1 END
+            LEFT JOIN user_preferences other_prefs
+                ON other_prefs.user_id = other_user.user_id
+            WHERE m.user_id_1 = $1 OR m.user_id_2 = $1
+            ORDER BY m.matched_at DESC
             LIMIT $2
             """,
             user_id, limit

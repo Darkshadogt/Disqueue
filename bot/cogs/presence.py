@@ -29,6 +29,7 @@ class Presence(commands.Cog):
         startTime: object,
         partySize: int,
         maxPartySize: int | None,
+        guildID: int,
     ) -> None:
         await asyncio.sleep(GAME_START_GRACE_PERIOD)
 
@@ -43,26 +44,27 @@ class Presence(commands.Cog):
         await db.check_user(userID)
 
         if userID not in self.session:
-            self.session[userID] = {
-                gameName: {
-                    "start_time": startTime,
-                    "party_size": partySize,
-                    "max_party_size": maxPartySize,
-                }
-            }
-            await db.start_game_session(userID, gameName, partySize, maxPartySize, startTime)
-            if matching:
-                await matching.check_for_match(userID, gameName)
-        else:
-            if gameName not in self.session[userID]:
-                self.session[userID][gameName] = {
-                    "start_time": startTime,
-                    "party_size": partySize,
-                    "max_party_size": maxPartySize,
-                }
-                await db.start_game_session(userID, gameName, partySize, maxPartySize, startTime)
-                if matching:
-                    await matching.check_for_match(userID, gameName)
+            self.session[userID] = {}
+
+        existing = self.session[userID].get(gameName)
+
+        if existing is not None:
+            if guildID >= existing["guild_id"]:
+                return
+            # Same game already recorded for this user and only let a lower guild ID
+            # to be recorded for a deterministic cross-server attribution. Higher or
+            # equal IDs are a duplicate event from the same guild
+            await db.end_game_session(userID, gameName)
+
+        self.session[userID][gameName] = {
+            "start_time": startTime,
+            "party_size": partySize,
+            "max_party_size": maxPartySize,
+            "guild_id": guildID,
+        }
+        await db.start_game_session(userID, gameName, partySize, maxPartySize, startTime, str(guildID))
+        if matching:
+            await matching.check_for_match(userID, gameName)
 
     # Confirms a game session has genuinely ended before removing it
     # Waits before removing from session to account for brief focus switches
@@ -90,6 +92,7 @@ class Presence(commands.Cog):
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
         userID = before.id
+        guildID = after.guild.id
         update: list[tuple[str, object, object]] = [
             (game.name, game.start, game.party)
             for game in after.activities
@@ -104,7 +107,7 @@ class Presence(commands.Cog):
             partySize = party.get("current", 1) if party else 1
             maxPartySize = party.get("max", None) if party else None
             asyncio.create_task(
-                self.verify_session_start(update, userID, gameName, startTime, partySize, maxPartySize)
+                self.verify_session_start(update, userID, gameName, startTime, partySize, maxPartySize, guildID)
             )
 
         # Schedule grace period tasks for games that disappeared from this update

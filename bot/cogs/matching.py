@@ -308,8 +308,28 @@ class Matching(commands.Cog):
                 break
         
     async def record_match(self, userID: int, otherUserID: int, gameName: str) -> None:
-        # Record the match only after both players have confirmed
-        await db.record_match(userID, otherUserID, gameName)
+        matched_at = datetime.datetime.now(datetime.timezone.utc)
+
+        userSession = await db.get_session_start(userID, gameName)
+        otherSession = await db.get_session_start(otherUserID, gameName)
+
+        waitTime1 = int((matched_at - userSession["started_at"]).total_seconds()) if userSession else None
+        waitTime2 = int((matched_at - otherSession["started_at"]).total_seconds()) if otherSession else None
+
+        crossServer = (
+            userSession is not None
+            and otherSession is not None
+            and userSession["guild_id"] != otherSession["guild_id"]
+        )
+
+        await db.record_match(
+            userID,
+            otherUserID,
+            gameName,
+            cross_server=crossServer,
+            wait_time_1=waitTime1,
+            wait_time_2=waitTime2,
+        )
 
     async def handle_match_response(
         self,

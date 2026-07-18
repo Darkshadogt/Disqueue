@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     party_size      INTEGER DEFAULT 1,
     max_party_size  INTEGER DEFAULT NULL,
     started_at      TIMESTAMPTZ NOT NULL,
-    ended_at        TIMESTAMPTZ DEFAULT NULL
+    ended_at        TIMESTAMPTZ DEFAULT NULL,
+    guild_id        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS matches (
@@ -46,5 +47,8 @@ CREATE TABLE IF NOT EXISTS matches (
     user_id_2     TEXT REFERENCES users(user_id) ON DELETE CASCADE,
     game_name     TEXT NOT NULL,
     matched_at    TIMESTAMPTZ DEFAULT NOW(),
+    cross_server  BOOLEAN DEFAULT FALSE,
+    wait_time_1   INTEGER DEFAULT NULL,
+    wait_time_2   INTEGER DEFAULT NULL,
     CONSTRAINT no_self_match CHECK (user_id_1 != user_id_2)
 );

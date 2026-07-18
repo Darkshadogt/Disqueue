@@ -7,13 +7,18 @@ router = APIRouter(prefix="/users", tags=["matches"])
 
 @router.get("/me/matches")
 async def get_match_history(user=Depends(get_current_user)):
-    matches = await db.get_match_history(user["user_id"])
+    user_id = user["user_id"]
+    matches = await db.get_match_history(user_id)
+
     return [
         {
-            "user_id_1": match["user_id_1"],
-            "user_id_2": match["user_id_2"],
+            "id": match["id"],
             "game_name": match["game_name"],
             "matched_at": match["matched_at"].isoformat(),
+            "cross_server": match["cross_server"],
+            "wait_time": match["my_wait_time"],
+            "user_display_name": match["other_display_name"],
+            "user_avatar": match["other_avatar"],
         }
         for match in matches
     ]
