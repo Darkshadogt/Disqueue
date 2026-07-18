@@ -3,13 +3,14 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from backend.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_MINUTES
+import db.database as db
 
 security = HTTPBearer()
 
-def create_access_token(user_id: int, discord_username: str) -> str:
+def create_access_token(user_id: str, discord_username: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
     payload = {
-        "sub": str(user_id),
+        "sub": user_id,              # keep as string
         "username": discord_username,
         "exp": expire,
     }
@@ -27,9 +28,13 @@ def decode_access_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict:
+):
     payload = decode_access_token(credentials.credentials)
+    user_id = payload["sub"]
+    userProfile = await db.get_user_profile(user_id)
+
     return {
-        "user_id": int(payload["sub"]),
+        "user_id": user_id,
         "username": payload["username"],
+        "avatar": userProfile["avatar"],
     }

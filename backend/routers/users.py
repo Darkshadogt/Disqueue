@@ -7,14 +7,19 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/me")
 async def get_me(user=Depends(get_current_user)):
-    # Returns the logged-in user's profile
-    preferences = await db.get_preferences(user["user_id"])
+    user_id = user["user_id"]
+
+    preferences = await db.get_preferences(user_id)
+    userProfile = await db.get_user_profile(user_id)
+
     if preferences is None:
         raise HTTPException(status_code=404, detail="User not found")
+
     return {
-        "user_id": user["user_id"],
+        "user_id": user_id,
         "username": user["username"],
         "display_name": preferences["display_name"],
+        "avatar": userProfile["avatar"],
         "bio": preferences["bio"],
         "language": preferences["language"],
         "region": preferences["region"],
@@ -22,11 +27,12 @@ async def get_me(user=Depends(get_current_user)):
 
 
 @router.get("/{user_id}")
-async def get_user(user_id: int, user=Depends(get_current_user)):
-    # Returns a specific user's public profile
+async def get_user(user_id: str, user=Depends(get_current_user)):
     preferences = await db.get_preferences(user_id)
+
     if preferences is None:
         raise HTTPException(status_code=404, detail="User not found")
+
     return {
         "user_id": user_id,
         "display_name": preferences["display_name"],
