@@ -86,6 +86,7 @@ class Matching(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.pendingMatches: dict[frozenset[int], dict[str, object]] = {}
+        self._limitNotifiedToday: set[tuple[int, object]] = set()
 
     async def build_match_embed(
         self,
@@ -95,8 +96,8 @@ class Matching(commands.Cog):
         statusText: str = "Pending other player's confirmation",
     ) -> discord.Embed:
         # Build the DM embed with both players' profile details
-        userPreferences = await db.get_preferences(user.id)
-        otherUserPreferences = await db.get_preferences(otherUser.id)
+        userPreferences = await db.get_preferences(str(user.id))
+        otherUserPreferences = await db.get_preferences(str(otherUser.id))
 
         userBio = (userPreferences["bio"] if userPreferences else None) or "Not set"
         userRegion = (userPreferences ["region"] if userPreferences else None) or "Not set"
@@ -151,7 +152,7 @@ class Matching(commands.Cog):
 
     async def _match_confirmation_required(self, userID: int) -> bool:
         # Fall back to confirmation enabled if preferences are unavailable
-        preferences = await db.get_preferences(userID)
+        preferences = await db.get_preferences(str(userID))
         if preferences is None:
             return False
         return preferences["match_confirmation_required"]
@@ -195,7 +196,7 @@ class Matching(commands.Cog):
 
     async def checkDND(self, userID: int) -> bool:
         # Respect each user's quiet hours before creating a match
-        preferences = await db.get_preferences(userID)
+        preferences = await db.get_preferences(str(userID))
         if preferences is None:
             return False
 
@@ -217,23 +218,23 @@ class Matching(commands.Cog):
         return userCurrentHour >= startHour or userCurrentHour < endHour
 
     async def check_user_cooldown(self, userID: int, cooldownMinutes: int) -> bool:
-        lastMatch = await db.get_last_match_time(userID)
+        lastMatch = await db.get_last_match_time(str(userID))
         if lastMatch is None:
             return False
         elapsed = datetime.datetime.now(datetime.timezone.utc) - lastMatch
         return elapsed < datetime.timedelta(minutes=cooldownMinutes)
 
     async def check_user_limit(self, userID: int, matchLimit: int) -> bool:
-        todayCount = await db.get_match_count_today(userID)
+        todayCount = await db.get_match_count_today(str(userID))
         return todayCount < matchLimit
 
     async def is_eligible(self, userID: int, otherUserID: int, gameName : str) -> bool:
         #Apply all matching rules before DM is sent
-        await db.check_user(userID)
-        await db.check_user(otherUserID)
+        await db.check_user(str(userID))
+        await db.check_user(str(otherUserID))
 
-        userPreferences = await db.get_preferences(userID)
-        otherUserPreferences = await db.get_preferences(otherUserID)
+        userPreferences = await db.get_preferences(str(userID))
+        otherUserPreferences = await db.get_preferences(str(otherUserID))
 
         if userPreferences is None or otherUserPreferences is None:
             return False
@@ -247,8 +248,9 @@ class Matching(commands.Cog):
         if await self.checkDND(userID) or await self.checkDND(otherUserID):
             return False
 
-        userBlocklist = await db.get_blocklist(userID)
-        otherBlocklist = await db.get_blocklist(otherUserID)
+        userBlocklist = await db.get_blocklist(str(userID))
+        otherBlocklist = await db.get_blocklist(str(otherUserID))
+
         if userID in otherBlocklist or otherUserID in userBlocklist:
             return False
 
@@ -259,9 +261,11 @@ class Matching(commands.Cog):
 
         if userPreferences["match_limit"] is not None:
             if not await self.check_user_limit(userID, userPreferences["match_limit"]):
+                await self._notify_limit_reached(userID, userPreferences["match_limit"])
                 return False
         if otherUserPreferences["match_limit"] is not None:
             if not await self.check_user_limit(otherUserID, otherUserPreferences["match_limit"]):
+                await self._notify_limit_reached(otherUserID, otherUserPreferences["match_limit"])
                 return False
 
         userLanguage = userPreferences["language"]
@@ -310,8 +314,8 @@ class Matching(commands.Cog):
     async def record_match(self, userID: int, otherUserID: int, gameName: str) -> None:
         matched_at = datetime.datetime.now(datetime.timezone.utc)
 
-        userSession = await db.get_session_start(userID, gameName)
-        otherSession = await db.get_session_start(otherUserID, gameName)
+        userSession = await db.get_session_start(str(userID), gameName)
+        otherSession = await db.get_session_start(str(otherUserID), gameName)
 
         waitTime1 = int((matched_at - userSession["started_at"]).total_seconds()) if userSession else None
         waitTime2 = int((matched_at - otherSession["started_at"]).total_seconds()) if otherSession else None
@@ -323,12 +327,38 @@ class Matching(commands.Cog):
         )
 
         await db.record_match(
-            userID,
-            otherUserID,
+            str(userID),
+            str(otherUserID),
             gameName,
             cross_server=crossServer,
             wait_time_1=waitTime1,
             wait_time_2=waitTime2,
+        )
+
+        await db.create_notification(
+            str(userID), "match", "New match found",
+            f"You matched with someone for {gameName}."
+        )
+
+        await db.create_notification(
+            str(otherUserID), "match", "New match found",
+            f"You matched with someone for {gameName}."
+        )
+    
+    async def _notify_limit_reached(self, userID: int, limit: int) -> None:
+        # Avoid spamming: only notify once per day per user, tracked in-memory.
+        # Resets naturally since match_limit itself resets daily via get_match_count_today.
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        key = (userID, today)
+        if key in self._limitNotifiedToday:
+            return
+        self._limitNotifiedToday.add(key)
+
+        await db.create_notification(
+            str(userID),
+            "preference_alert",
+            "Daily match limit reached",
+            f"You've hit your daily limit of {limit} matches. New matches will resume tomorrow.",
         )
 
     async def handle_match_response(
@@ -597,9 +627,9 @@ class Matching(commands.Cog):
     @app_commands.command(name="match-history", description="View your recent matches")
     async def matchHistory(self, interaction: discord.Interaction) -> None:
         userID = interaction.user.id
-        await db.check_user(userID)
+        await db.check_user(str(userID))
         
-        matches = await db.get_match_history(userID)
+        matches = await db.get_match_history(str(userID))
 
         if not matches:
             await interaction.response.send_message("You have no match history yet.", ephemeral=True)

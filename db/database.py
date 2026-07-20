@@ -280,3 +280,47 @@ async def get_discord_tokens(user_id: str) -> asyncpg.Record | None:
             """,
             user_id
         )
+
+async def create_notification(user_id: str, type_: str, title: str, body: str | None = None) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO notifications (user_id, type, title, body)
+            VALUES ($1, $2, $3, $4)
+            """,
+            user_id, type_, title, body
+        )
+
+async def get_notifications(user_id: str, limit: int = 20) -> list[asyncpg.Record]:
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT id, type, title, body, read, created_at
+            FROM notifications
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id, limit
+        )
+
+async def get_unread_count(user_id: str) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE",
+            user_id
+        )
+
+async def mark_notification_read(user_id: str, notification_id: int) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2",
+            notification_id, user_id
+        )
+
+async def mark_all_notifications_read(user_id: str) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE",
+            user_id
+        )

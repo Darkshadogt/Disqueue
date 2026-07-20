@@ -41,7 +41,7 @@ class Presence(commands.Cog):
         matching = self.bot.get_cog("Matching")
 
         # Ensure the user exists in the database before writing session data
-        await db.check_user(userID)
+        await db.check_user(str(userID))
 
         if userID not in self.session:
             self.session[userID] = {}
@@ -54,7 +54,7 @@ class Presence(commands.Cog):
             # Same game already recorded for this user and only let a lower guild ID
             # to be recorded for a deterministic cross-server attribution. Higher or
             # equal IDs are a duplicate event from the same guild
-            await db.end_game_session(userID, gameName)
+            await db.end_game_session(str(userID), gameName)
 
         self.session[userID][gameName] = {
             "start_time": startTime,
@@ -62,9 +62,18 @@ class Presence(commands.Cog):
             "max_party_size": maxPartySize,
             "guild_id": guildID,
         }
-        await db.start_game_session(userID, gameName, partySize, maxPartySize, startTime, str(guildID))
+
+        await db.start_game_session(
+            str(userID),
+            gameName,
+            partySize,
+            maxPartySize,
+            startTime,
+            str(guildID)
+        )
+
         if matching:
-            await matching.check_for_match(userID, gameName)
+            await matching.check_for_match(str(userID), gameName)
 
     # Confirms a game session has genuinely ended before removing it
     # Waits before removing from session to account for brief focus switches
@@ -76,13 +85,13 @@ class Presence(commands.Cog):
             self.session[userID].pop(gameName)
 
             # Persist the session end to the database
-            await db.end_game_session(userID, gameName)
+            await db.end_game_session(str(userID), gameName)
 
             # Notify matching that this user left so remaining players
             # can be re-queued for a new match after their cooldown expires
             matching = self.bot.get_cog("Matching")
             if matching:
-                await matching.on_session_ended(userID, gameName)
+                await matching.on_session_ended(str(userID), gameName)
 
             # Remove the user entry entirely once no active games remain,
             # to prevent stale empty records accumulating in memory
@@ -93,6 +102,7 @@ class Presence(commands.Cog):
     async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
         userID = before.id
         guildID = after.guild.id
+
         update: list[tuple[str, object, object]] = [
             (game.name, game.start, game.party)
             for game in after.activities
@@ -107,7 +117,15 @@ class Presence(commands.Cog):
             partySize = party.get("current", 1) if party else 1
             maxPartySize = party.get("max", None) if party else None
             asyncio.create_task(
-                self.verify_session_start(update, userID, gameName, startTime, partySize, maxPartySize, guildID)
+                self.verify_session_start(
+                    update,
+                    userID,
+                    gameName,
+                    startTime,
+                    partySize,
+                    maxPartySize,
+                    guildID
+                )
             )
 
         # Schedule grace period tasks for games that disappeared from this update

@@ -55,3 +55,16 @@ CREATE TABLE IF NOT EXISTS matches (
     wait_time_2   INTEGER DEFAULT NULL,
     CONSTRAINT no_self_match CHECK (user_id_1 != user_id_2)
 );
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     TEXT REFERENCES users(user_id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,   -- 'match', 'server_added', 'server_removed', 'preference_alert'
+    title       TEXT NOT NULL,
+    body        TEXT,
+    read        BOOLEAN DEFAULT FALSE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
+    ON notifications (user_id, read, created_at DESC);

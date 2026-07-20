@@ -61,13 +61,13 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="reset", description="Reset your user preferences")
     async def reset(self, interaction: discord.Interaction) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.reset_preferences(userID)
         await interaction.response.send_message("Your preferences have been reset.", ephemeral=True)
 
     @app_commands.command(name="preferences", description="View your current preferences")
     async def viewPreferences(self, interaction: discord.Interaction) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         prefs = await db.get_preferences(userID)
@@ -108,7 +108,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="enable", description="Start receiving match notifications")
     async def enable(self, interaction: discord.Interaction) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await interaction.response.defer(ephemeral=True)
 
@@ -133,7 +133,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="disable", description="Stop receiving match notifications")
     async def disable(self, interaction: discord.Interaction) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "enabled", False)
         await db.update_preference(userID, "dm_enabled", False)
@@ -144,7 +144,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="block", description="Block a user from being matched with you")
     async def block(self, interaction: discord.Interaction, user: discord.Member) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if user.id == userID:
@@ -161,7 +161,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="unblock", description="Unblock a user so they can be matched with you again")
     async def unblock(self, interaction: discord.Interaction, user: discord.Member) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         blocklist = await db.get_blocklist(userID)
@@ -177,7 +177,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="blockid", description="Block a user by their ID from being matched with you")
     async def blockID(self, interaction: discord.Interaction, user_id: int) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if user_id == userID:
@@ -200,7 +200,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="unblockid", description="Unblock a user by their ID so they can be matched with you again")
     async def unblockID(self, interaction: discord.Interaction, user_id: int) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if user_id == userID:
@@ -225,7 +225,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="set-match-limit", description="Sets the number of matches a user can be matched in a day (leave blank to remove limit)")
     async def setMatchLimit(self, interaction: discord.Interaction, limit: Optional[int] = None) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if limit is not None and limit <= 0:
@@ -241,7 +241,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="set-match-cooldown", description="Sets the cooldown time before a user can be matched again (leave blank to reset to default)")
     async def setMatchCooldown(self, interaction: discord.Interaction, time: Optional[int] = None) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if time is not None and time <= 0:
@@ -259,7 +259,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="match-confirmation", description="Toggle whether you confirm or auto-accept matches")
     async def matchConfirmation(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "match_confirmation_required", setting == "on")
 
@@ -277,14 +277,14 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-game-mode", description="Selects which mode you want to be matched for")
     @app_commands.choices(mode=MODES)
     async def setGameMode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "game_mode", mode.value)
         await interaction.response.send_message(f"Your preferred mode has been set to {mode.name}.", ephemeral=True)
 
     @app_commands.command(name="friend-notifications", description="Toggle notifications when friends start playing the same game")
     async def friendPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "friend_online_enabled", setting == "on")
         await interaction.response.send_message(f"Friend notifications turned {setting}.", ephemeral=True)
@@ -292,7 +292,7 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-timezone", description="Sets your timezone for better matching")
     @app_commands.choices(timezone=TIMEZONES)
     async def setTimezone(self, interaction: discord.Interaction, timezone: app_commands.Choice[str]) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "timezone", timezone.value)
         await interaction.response.send_message(f"Your preferred timezone has been set to {timezone.name}.", ephemeral=True)
@@ -300,7 +300,7 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-dnd", description="Sets what time you would like to stop being matched")
     @app_commands.choices(start_time=HOURS, end_time=HOURS)
     async def setDND(self, interaction: discord.Interaction, start_time: app_commands.Choice[str], end_time: app_commands.Choice[str]) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if start_time.value == end_time.value:
@@ -316,7 +316,7 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="unset-dnd", description="Unsets your DND time")
     async def unsetDND(self, interaction: discord.Interaction) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "dnd_start", None)
         await db.update_preference(userID, "dnd_end", None)
@@ -327,7 +327,7 @@ class Preferences(commands.Cog):
         if len(bio) > 150:
             await interaction.response.send_message("Bio must be 150 characters or less.", ephemeral=True)
             return
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "bio", bio)
         await interaction.response.send_message(f"Bio updated: {bio}", ephemeral=True)
@@ -337,7 +337,7 @@ class Preferences(commands.Cog):
         if len(name) > 32:
             await interaction.response.send_message("Name must be 32 characters or less.", ephemeral=True)
             return
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "display_name", name)
         await interaction.response.send_message(f"Display name set to: {name}", ephemeral=True)
@@ -345,7 +345,7 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-region", description="Set your region for ranked matching (leave empty to clear)")
     @app_commands.choices(region=REGIONS)
     async def setRegion(self, interaction: discord.Interaction, region: Optional[app_commands.Choice[str]] = None) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "region", region.value if region else None)
 
@@ -357,7 +357,7 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-language", description="Set your preferred language for matching (leave empty to clear)")
     @app_commands.choices(language=LANGUAGES)
     async def setLanguage(self, interaction: discord.Interaction, language: Optional[app_commands.Choice[str]] = None) -> None:
-        userID = interaction.user.id
+        userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "language", language.value if language else None)
 
