@@ -101,3 +101,18 @@ CREATE TRIGGER game_sessions_notify_update
 AFTER UPDATE ON game_sessions
 FOR EACH ROW
 EXECUTE FUNCTION notify_live_session_change();
+
+CREATE OR REPLACE FUNCTION notify_notification_created() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'notification_created',
+    json_build_object('user_id', NEW.user_id)::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER notifications_notify
+AFTER INSERT ON notifications
+FOR EACH ROW
+EXECUTE FUNCTION notify_notification_created();

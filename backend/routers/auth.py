@@ -18,8 +18,7 @@ DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 DISCORD_USER_URL = "https://discord.com/api/users/@me"
 
 
-@router.get("/login")
-async def login():
+def build_authorize_url(prompt: str | None = "none") -> str:
     encoded_redirect = urllib.parse.quote(DISCORD_REDIRECT_URI, safe="")
     params = (
         f"?client_id={DISCORD_CLIENT_ID}"
@@ -27,11 +26,28 @@ async def login():
         f"&response_type=code"
         f"&scope=identify+guilds"
     )
-    return RedirectResponse(url=DISCORD_OAUTH_URL + params)
+    if prompt:
+        params += f"&prompt={prompt}"
+    return DISCORD_OAUTH_URL + params
+
+
+@router.get("/login")
+async def login():
+    # prompt=none: skip the consent screen for users who already authorized —
+    # Discord defaults to always showing it otherwise
+    return RedirectResponse(url=build_authorize_url(prompt="none"))
 
 
 @router.get("/callback")
-async def callback(code: str):
+async def callback(code: str = None, error: str = None):
+    if error:
+        # prompt=none couldn't silently skip (first-time user, or access was
+        # actually revoked) — fall back to a normal login that shows consent
+        return RedirectResponse(url=build_authorize_url(prompt=None))
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
             DISCORD_TOKEN_URL,
