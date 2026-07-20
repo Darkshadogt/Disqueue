@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import db.database as db
 
-from backend.routers import users, preferences, matches, live, auth
+from backend.routers import users, preferences, matches, live, auth, notifications, servers
 
 
 @asynccontextmanager
@@ -42,3 +42,5 @@ app.include_router(users.router)
 app.include_router(preferences.router)
 app.include_router(matches.router)
 app.include_router(live.router)
+app.include_router(servers.router)
+app.include_router(notifications.router)
