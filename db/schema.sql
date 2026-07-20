@@ -26,6 +26,22 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     updated_at                  TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE OR REPLACE FUNCTION notify_preferences_change() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify(
+    'preferences_updated',
+    json_build_object('user_id', NEW.user_id)::text
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER user_preferences_notify
+AFTER UPDATE ON user_preferences
+FOR EACH ROW
+EXECUTE FUNCTION notify_preferences_change();
+
+
 CREATE TABLE IF NOT EXISTS user_blocklist (
     user_id         TEXT REFERENCES users(user_id) ON DELETE CASCADE,
     blocked_user_id TEXT,
@@ -68,3 +84,20 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
     ON notifications (user_id, read, created_at DESC);
+
+CREATE OR REPLACE FUNCTION notify_live_session_change() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('live_session_changed', '1');
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER game_sessions_notify_insert
+AFTER INSERT ON game_sessions
+FOR EACH ROW
+EXECUTE FUNCTION notify_live_session_change();
+ 
+CREATE TRIGGER game_sessions_notify_update
+AFTER UPDATE ON game_sessions
+FOR EACH ROW
+EXECUTE FUNCTION notify_live_session_change();

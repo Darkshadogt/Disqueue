@@ -22,3 +22,12 @@ async def get_match_history(user=Depends(get_current_user)):
         }
         for match in matches
     ]
+
+@router.get("/users/me/stats")
+async def get_match_stats(user=Depends(get_current_user)):
+    count_today = await db.get_match_count_today(user["user_id"])
+    last_match = await db.get_last_match_time(user["user_id"])
+    return {
+        "matches_today": count_today,
+        "last_match_at": last_match,
+    }

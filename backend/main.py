@@ -7,16 +7,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import db.database as db
+from backend.pg_listener import start_listener
 
-from backend.routers import users, preferences, matches, live, auth, notifications, servers
+from backend.routers import users, preferences, matches, live, auth, notifications, servers, ws
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Runs on startup, create the database pool
     await db.create_pool()
+    app.state.pg_listener_conn = await start_listener()
     yield
-    # Runs on shutdown, close the database pool
+    await app.state.pg_listener_conn.close()
     await db.close_pool()
 
 
@@ -44,3 +45,4 @@ app.include_router(matches.router)
 app.include_router(live.router)
 app.include_router(servers.router)
 app.include_router(notifications.router)
+app.include_router(ws.router)

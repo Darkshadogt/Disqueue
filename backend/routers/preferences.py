@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.auth_utils import get_current_user
+from ..ws_manager import manager
 import db.database as db
 
 router = APIRouter(prefix="/users", tags=["preferences"])
@@ -54,8 +55,9 @@ async def update_preferences(
     body: PreferencesUpdate,
     user=Depends(get_current_user)
 ):
-    # Only update fields that were actually provided in the request
     updates = body.model_dump(exclude_none=True)
     for column, value in updates.items():
         await db.update_preference(user["user_id"], column, value)
+
+    fresh = await db.get_preferences(user["user_id"])
     return {"updated": list(updates.keys())}
