@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
-from backend.auth_utils import get_current_user
+
 import db.database as db
+from backend.auth_utils import get_current_user
 
 router = APIRouter(prefix="/users", tags=["notifications"])
 

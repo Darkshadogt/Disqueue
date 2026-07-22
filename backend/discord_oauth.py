@@ -1,11 +1,15 @@
-import httpx
 import os
 from datetime import datetime, timedelta, timezone
+
+import httpx
 import db.database as db
 
 DISCORD_API = "https://discord.com/api/v10"
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+
+# Refresh a bit before actual expiry to avoid a token dying mid-request
+REFRESH_BUFFER_SECONDS = 60
 
 
 async def get_valid_discord_token(user_id: str) -> str | None:
@@ -19,8 +23,7 @@ async def get_valid_discord_token(user_id: str) -> str | None:
     if tokens is None or tokens["discord_access_token"] is None:
         return None
 
-    # Refresh a bit early (60s buffer) to avoid a token expiring mid-request
-    if tokens["discord_token_expires_at"] > datetime.now(timezone.utc) + timedelta(seconds=60):
+    if tokens["discord_token_expires_at"] > datetime.now(timezone.utc) + timedelta(seconds=REFRESH_BUFFER_SECONDS):
         return tokens["discord_access_token"]
 
     if tokens["discord_refresh_token"] is None:
@@ -39,7 +42,7 @@ async def get_valid_discord_token(user_id: str) -> str | None:
         )
 
     if res.status_code != 200:
-        # Refresh token itself is invalid/expired — user needs to re-login
+        # Refresh token itself is invalid or expired so user needs to re-login
         return None
 
     data = res.json()
@@ -48,6 +51,8 @@ async def get_valid_discord_token(user_id: str) -> str | None:
     await db.store_discord_tokens(
         user_id,
         access_token=data["access_token"],
+        # Discord doesn't always rotate the refresh token on refresh
+        # so fall back to the existing one if a new one isn't returned
         refresh_token=data.get("refresh_token", tokens["discord_refresh_token"]),
         expires_at=new_expires_at,
     )

@@ -1,9 +1,10 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from backend.auth_utils import get_current_user
-from ..ws_manager import manager
+
 import db.database as db
+from backend.auth_utils import get_current_user
 
 router = APIRouter(prefix="/users", tags=["preferences"])
 
@@ -13,6 +14,7 @@ async def get_preferences(user=Depends(get_current_user)):
     preferences = await db.get_preferences(user["user_id"])
     if preferences is None:
         raise HTTPException(status_code=404, detail="User not found")
+
     blocklist = await db.get_blocklist(user["user_id"])
     return {
         "enabled": preferences["enabled"],
@@ -51,13 +53,16 @@ class PreferencesUpdate(BaseModel):
 
 
 @router.patch("/me/preferences")
-async def update_preferences(
-    body: PreferencesUpdate,
-    user=Depends(get_current_user)
-):
+async def update_preferences(body: PreferencesUpdate, user=Depends(get_current_user)):
+    # Only fields the client actually sent get written
+    # this lets the frontend PATCH a single changed field without clobbering the rest
     updates = body.model_dump(exclude_none=True)
     for column, value in updates.items():
         await db.update_preference(user["user_id"], column, value)
 
-    fresh = await db.get_preferences(user["user_id"])
+    # Not returning the fresh row here. The frontend already applied
+    # this update optimistically, and any connected clients (including
+    # this one) get the authoritative state pushed over the websocket
+    # via the preferences_updated Postgres NOTIFY, so a second round
+    # trip isn't needed
     return {"updated": list(updates.keys())}
