@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surface — dark void */
+  --color-void-page: #0a0a12;
+  --color-void-card: #11111c;
+  --color-void-raised: #191927;
+  --color-void-hover: #222236;
+  --color-void-border: #2e2e48;
+
+  /* Text hierarchy */
+  --color-primary: #ffffff;
+  --color-secondary: #c8c8e0;
+  --color-accent: #a78bff;
+  --color-neon: #d999ff;
+  --color-muted: #8888aa;
+
+  /* Primary — deep space purple */
+  --color-brand-50: #f0eeff;
+  --color-brand-100: #d9d0ff;
+  --color-brand-200: #b9aaff;
+  --color-brand-400: #8b72ff;
+  --color-brand-500: #6b4eff;
+  --color-brand-600: #4c3baa;
+  --color-brand-800: #2d2070;
+  --color-brand-900: #150d40;
+
+  /* Accent — electric lavender */
+  --color-accent-50: #f4efff;
+  --color-accent-100: #e6dbff;
+  --color-accent-200: #d2bdff;
+  --color-accent-400: #a78bff;
+  --color-accent-500: #9070ff;
+  --color-accent-600: #6f52cc;
+  --color-accent-800: #4a3499;
+  --color-accent-900: #2a1d66;
+
+  /* Neon — glow purple */
+  --color-neon-50: #f7e6ff;
+  --color-neon-100: #e9c8ff;
+  --color-neon-200: #d999ff;
+  --color-neon-400: #c060ff;
+  --color-neon-500: #9b30ff;
+  --color-neon-600: #7700ee;
+  --color-neon-800: #4a0099;
+  --color-neon-900: #2a005c;
+
+  /* Semantic status colors */
+  --color-match: #0ffb8a;
+  --color-pending: #ffb830;
+  --color-declined: #ff4d6a;
+  --color-info: #3b82f6;
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Animations */
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-float: float 8s ease-in-out infinite;
+  --animate-glow-pulse: glow-pulse 4s ease-in-out infinite;
+  --animate-gradient: gradient 8s linear infinite;
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-slide-in: slide-in 0.25s ease-out;
+  --animate-scale-in: scale-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-24px);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes gradient {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Global dark background */
+html,
+body {
+  background-color: var(--color-void-page);
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide the default scrollbar everywhere... */
+html,
+body {
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* ...and opt specific scrollable regions (sidebar, lists, dropdowns)
+   back into a slim custom scrollbar via this class. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-void-border) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-void-border);
+  border-radius: 9999px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
