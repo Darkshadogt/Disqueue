@@ -1,5 +1,7 @@
 import asyncpg
+import asyncio
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,17 +9,47 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 pool: asyncpg.Pool | None = None
 
+POOL_MIN_SIZE = 5
+POOL_MAX_SIZE = 20
+ACQUIRE_TIMEOUT_SECONDS = 5
+COMMAND_TIMEOUT_SECONDS = 10
+
+
 async def create_pool() -> None:
     global pool
-    pool = await asyncpg.create_pool(DATABASE_URL)
+    pool = await asyncpg.create_pool(
+        DATABASE_URL,
+        min_size=POOL_MIN_SIZE,
+        max_size=POOL_MAX_SIZE,
+        command_timeout=COMMAND_TIMEOUT_SECONDS,
+    )
+
 
 async def close_pool() -> None:
     global pool
     if pool:
         await pool.close()
 
+
+@asynccontextmanager
+async def get_connection():
+    # Every query in this module goes through here instead of calling
+    # pool.acquire() directly, so pool exhaustion raises a clear, catchable
+    # error rather than hanging the calling command forever.
+    if pool is None:
+        raise RuntimeError("Database pool has not been initialized — call create_pool() first.")
+
+    try:
+        async with pool.acquire(timeout=ACQUIRE_TIMEOUT_SECONDS) as conn:
+            yield conn
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            "Database connection pool is exhausted — all connections are busy. Try again shortly."
+        ) from exc
+
+
 async def create_user(user_id: str):
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             INSERT INTO users (user_id)
@@ -27,15 +59,17 @@ async def create_user(user_id: str):
             user_id
         )
 
+
 async def get_user_profile(user_id: str):
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchrow(
             "SELECT avatar FROM users WHERE user_id = $1",
             user_id
         )
 
+
 async def update_user_profile(user_id: str, avatar: str):
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             UPDATE users
@@ -45,15 +79,17 @@ async def update_user_profile(user_id: str, avatar: str):
             avatar, user_id
         )
 
+
 async def get_preferences(user_id: str) -> asyncpg.Record | None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchrow(
             "SELECT * FROM user_preferences WHERE user_id = $1",
             user_id
         )
 
+
 async def create_default_preferences(user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             INSERT INTO user_preferences (user_id)
@@ -63,31 +99,60 @@ async def create_default_preferences(user_id: str) -> None:
             user_id
         )
 
+
+# Columns that update_preference() is allowed to write to. Without this
+# allowlist, the column name gets interpolated straight into the SQL string —
+# fine as long as every call site passes a hardcoded literal, but one caller
+# ever building that argument from user input would be a SQL injection path.
+_UPDATABLE_PREFERENCE_COLUMNS = {
+    "enabled",
+    "dm_enabled",
+    "friend_online_enabled",
+    "match_confirmation_required",
+    "match_limit",
+    "match_cooldown",
+    "game_mode",
+    "timezone",
+    "dnd_start",
+    "dnd_end",
+    "bio",
+    "display_name",
+    "region",
+    "language",
+}
+
+
 async def update_preference(user_id: str, column: str, value) -> None:
-    async with pool.acquire() as conn:
+    if column not in _UPDATABLE_PREFERENCE_COLUMNS:
+        raise ValueError(f"'{column}' is not a recognized, updatable preference column.")
+
+    async with get_connection() as conn:
         await conn.execute(
             f"UPDATE user_preferences SET {column} = $1, updated_at = NOW() WHERE user_id = $2",
             value, user_id
         )
 
+
 async def reset_preferences(user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             "DELETE FROM user_preferences WHERE user_id = $1",
             user_id
         )
-        await create_default_preferences(user_id)
+    await create_default_preferences(user_id)
+
 
 async def get_blocklist(user_id: str) -> list[str]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         rows = await conn.fetch(
             "SELECT blocked_user_id FROM user_blocklist WHERE user_id = $1",
             user_id
         )
         return [row["blocked_user_id"] for row in rows]
 
+
 async def add_to_blocklist(user_id: str, blocked_user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             INSERT INTO user_blocklist (user_id, blocked_user_id)
@@ -97,19 +162,22 @@ async def add_to_blocklist(user_id: str, blocked_user_id: str) -> None:
             user_id, blocked_user_id
         )
 
+
 async def remove_from_blocklist(user_id: str, blocked_user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             "DELETE FROM user_blocklist WHERE user_id = $1 AND blocked_user_id = $2",
             user_id, blocked_user_id
         )
 
+
 async def reset_blocklist(user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             "DELETE FROM user_blocklist WHERE user_id = $1",
             user_id
         )
+
 
 async def start_game_session(
     user_id: str,
@@ -119,7 +187,7 @@ async def start_game_session(
     started_at,
     guild_id: str | None = None,
 ) -> int:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchval(
             """
             INSERT INTO game_sessions (user_id, game_name, party_size, max_party_size, started_at, guild_id)
@@ -129,8 +197,9 @@ async def start_game_session(
             user_id, game_name, party_size, max_party_size, started_at, guild_id
         )
 
+
 async def end_game_session(user_id: str, game_name: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             UPDATE game_sessions
@@ -140,8 +209,9 @@ async def end_game_session(user_id: str, game_name: str) -> None:
             user_id, game_name
         )
 
+
 async def get_session_start(user_id: str, game_name: str):
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchrow(
             """
             SELECT started_at, guild_id
@@ -153,8 +223,9 @@ async def get_session_start(user_id: str, game_name: str):
             user_id, game_name
         )
 
+
 async def get_active_sessions(game_name: str) -> list[asyncpg.Record]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetch(
             """
             SELECT user_id, party_size, max_party_size, started_at
@@ -164,8 +235,9 @@ async def get_active_sessions(game_name: str) -> list[asyncpg.Record]:
             game_name
         )
 
+
 async def get_active_sessions_for_user(user_id: str) -> list[asyncpg.Record]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetch(
             """
             SELECT game_name, party_size, max_party_size, started_at
@@ -175,11 +247,13 @@ async def get_active_sessions_for_user(user_id: str) -> list[asyncpg.Record]:
             user_id
         )
 
+
 async def get_all_active_sessions() -> list[asyncpg.Record]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetch(
             "SELECT user_id, game_name, started_at FROM game_sessions WHERE ended_at IS NULL"
         )
+
 
 async def record_match(
     user_id_1: str,
@@ -189,7 +263,7 @@ async def record_match(
     wait_time_1: int | None = None,
     wait_time_2: int | None = None,
 ) -> int:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchval(
             """
             INSERT INTO matches (user_id_1, user_id_2, game_name, cross_server, wait_time_1, wait_time_2)
@@ -199,8 +273,9 @@ async def record_match(
             user_id_1, user_id_2, game_name, cross_server, wait_time_1, wait_time_2
         )
 
+
 async def get_match_history(user_id: str, limit: int = 10) -> list[asyncpg.Record]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetch(
             """
             SELECT
@@ -224,8 +299,9 @@ async def get_match_history(user_id: str, limit: int = 10) -> list[asyncpg.Recor
             user_id, limit
         )
 
+
 async def get_last_match_time(user_id: str):
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchval(
             """
             SELECT MAX(matched_at)
@@ -235,8 +311,9 @@ async def get_last_match_time(user_id: str):
             user_id
         )
 
+
 async def get_match_count_today(user_id: str) -> int:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchval(
             """
             SELECT COUNT(*)
@@ -247,10 +324,12 @@ async def get_match_count_today(user_id: str) -> int:
             user_id
         )
 
+
 async def check_user(user_id: str) -> asyncpg.Record:
     await create_user(user_id)
     await create_default_preferences(user_id)
     return await get_preferences(user_id)
+
 
 async def store_discord_tokens(
     user_id: str,
@@ -258,7 +337,7 @@ async def store_discord_tokens(
     refresh_token: str,
     expires_at,
 ) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             UPDATE users
@@ -270,8 +349,9 @@ async def store_discord_tokens(
             access_token, refresh_token, expires_at, user_id
         )
 
+
 async def get_discord_tokens(user_id: str) -> asyncpg.Record | None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchrow(
             """
             SELECT discord_access_token, discord_refresh_token, discord_token_expires_at
@@ -281,8 +361,9 @@ async def get_discord_tokens(user_id: str) -> asyncpg.Record | None:
             user_id
         )
 
+
 async def create_notification(user_id: str, type_: str, title: str, body: str | None = None) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             """
             INSERT INTO notifications (user_id, type, title, body)
@@ -291,8 +372,9 @@ async def create_notification(user_id: str, type_: str, title: str, body: str | 
             user_id, type_, title, body
         )
 
+
 async def get_notifications(user_id: str, limit: int = 20) -> list[asyncpg.Record]:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetch(
             """
             SELECT id, type, title, body, read, created_at
@@ -304,22 +386,25 @@ async def get_notifications(user_id: str, limit: int = 20) -> list[asyncpg.Recor
             user_id, limit
         )
 
+
 async def get_unread_count(user_id: str) -> int:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         return await conn.fetchval(
             "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read = FALSE",
             user_id
         )
 
+
 async def mark_notification_read(user_id: str, notification_id: int) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             "UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2",
             notification_id, user_id
         )
 
+
 async def mark_all_notifications_read(user_id: str) -> None:
-    async with pool.acquire() as conn:
+    async with get_connection() as conn:
         await conn.execute(
             "UPDATE notifications SET read = TRUE WHERE user_id = $1 AND read = FALSE",
             user_id

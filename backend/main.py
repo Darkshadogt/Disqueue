@@ -10,6 +10,13 @@ import db.database as db
 from backend.pg_listener import start_listener
 
 from backend.routers import users, preferences, matches, live, auth, notifications, servers, ws
+from backend.config import FRONTEND_CALLBACK_URL
+from urllib.parse import urlparse
+
+_parsed_frontend = urlparse(FRONTEND_CALLBACK_URL)
+_frontend_origin = f"{_parsed_frontend.scheme}://{_parsed_frontend.netloc}"
+
+ALLOWED_ORIGINS = ["http://localhost:5173", _frontend_origin]
 
 
 @asynccontextmanager
@@ -31,7 +38,7 @@ app = FastAPI(
 # Allow the React frontend to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
