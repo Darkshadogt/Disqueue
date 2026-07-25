@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import { LOGIN_URL } from "../config";
 import {
   IconBrandDiscord,
   IconBolt,
@@ -94,7 +95,7 @@ export default function Home() {
 
           <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row animate-fade-in [animation-delay:240ms]">
             <a
-              href="http://localhost:8000/auth/login"
+              href={LOGIN_URL}
               className="group inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-all hover:bg-brand-400 hover:shadow-brand-500/50 hover:-translate-y-0.5"
             >
               <IconBrandDiscord className="h-5 w-5" />
@@ -296,7 +297,7 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
-              href="http://localhost:8000/auth/login"
+              href={LOGIN_URL}
               className="group inline-flex items-center gap-2 rounded-xl bg-brand-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-all hover:bg-brand-400 hover:shadow-brand-500/50 hover:-translate-y-0.5"
             >
               <IconBrandDiscord className="h-5 w-5" />

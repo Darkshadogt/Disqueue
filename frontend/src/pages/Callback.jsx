@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LOGIN_URL } from "../config";
 
 /**
  * OAuth redirect target. Discord sends the user back here with the
@@ -32,7 +33,7 @@ export default function Callback() {
       <div className="flex min-h-screen items-center justify-center bg-void-page text-center text-secondary">
         <div>
           <p>Something went wrong signing you in.</p>
-          <a href="http://localhost:8000/auth/login" className="text-brand-400 underline">
+          <a href={LOGIN_URL} className="text-brand-400 underline">
             Try again
           </a>
         </div>
