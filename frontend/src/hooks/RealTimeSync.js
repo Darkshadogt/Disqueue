@@ -27,7 +27,7 @@ export function useRealTimeSync(onMessage) {
 
     function connect() {
       const token = localStorage.getItem("token");
-      if (!token) return; // No token yet so the token-changed listener below will retry
+      if (!token) return;
 
       ws = new WebSocket(`${WS_BASE_URL}/ws?token=${token}`);
 
@@ -38,9 +38,7 @@ export function useRealTimeSync(onMessage) {
       ws.onmessage = (event) => {
         try {
           onMessageRef.current(JSON.parse(event.data));
-        } catch {
-          // Malformed payload — ignore rather than crash the socket
-        }
+        } catch {}
       };
 
       ws.onclose = () => {
@@ -57,21 +55,18 @@ export function useRealTimeSync(onMessage) {
     }
 
     const onTokenChanged = () => {
-      if (isSocketOpen()) {
-        ws.close();
-      }
-
+      if (isSocketOpen()) ws.close();
       retryDelay = INITIAL_RETRY_DELAY_MS;
       connect();
     };
 
+    window.addEventListener("auth:token-changed", onTokenChanged);
+    connect();
+
     return () => {
       cancelled = true;
       window.removeEventListener("auth:token-changed", onTokenChanged);
-
-      if (isSocketOpen()) {
-        ws.close();
-      }
+      if (isSocketOpen()) ws.close();
     };
   }, []);
 }

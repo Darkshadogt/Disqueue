@@ -2,6 +2,10 @@ import asyncio
 import discord
 from discord.ext import commands
 from config import token, APPLICATION_ID
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db.database as db
 
 intents = discord.Intents.default()
