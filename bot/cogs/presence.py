@@ -1,29 +1,22 @@
 from discord.ext import commands
 import discord
 import asyncio
-import os
-import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import db.database as db
 
-GAME_START_GRACE_PERIOD = 90
-GAME_STOP_GRACE_PERIOD = 120
-
+# Grace periods filter out noise from Discord's activity tracking
+# brief focus switches or accidental launches shouldn't register as real sessions
+from config import GAME_START_GRACE_PERIOD, GAME_STOP_GRACE_PERIOD
 
 class Presence(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        # In-memory session for fast lookups during matching and stop detection
-        # Mirrors what is persisted in the database where both are kept in sync
+        # In-memory mirror of active sessions for fast lookups during matching
+        # Kept in sync with what's persisted in the database
         self.session: dict[int, dict[str, dict[str, object]]] = {}
 
-    # Confirms a game session is genuine before recording it
-    # Waits before adding to session to filter out accidental launches
-    # and focus-detection noise from Discord's activity tracking
-    async def verify_session_start(
+    async def _confirm_session_start(
         self,
-        update: list[tuple[str, object, object]],
+        currentActivities: list[tuple[str, object, object]],
         userID: int,
         gameName: str,
         startTime: object,
@@ -31,32 +24,26 @@ class Presence(commands.Cog):
         maxPartySize: int | None,
         guildID: int,
     ) -> None:
+        # Wait out the grace period, then confirm the game is still active
+        # before recording it as a genuine session
         await asyncio.sleep(GAME_START_GRACE_PERIOD)
 
-        # Confirm the game is still in the update snapshot after the grace period which
-        # prevents recording a session if the user stopped playing during the wait
-        if not any(gameName == game[0] for game in update):
+        if not any(gameName == activity[0] for activity in currentActivities):
             return
 
-        matching = self.bot.get_cog("Matching")
-
-        # Ensure the user exists in the database before writing session data
         await db.check_user(str(userID))
 
-        if userID not in self.session:
-            self.session[userID] = {}
+        userSessions = self.session.setdefault(userID, {})
+        existingSession = userSessions.get(gameName)
 
-        existing = self.session[userID].get(gameName)
-
-        if existing is not None:
-            if guildID >= existing["guild_id"]:
+        if existingSession is not None:
+            # Lower guild ID wins for deterministic cross-server attribution
+            # Equal or higher IDs are treated as a duplicate event from the same guild
+            if guildID >= existingSession["guild_id"]:
                 return
-            # Same game already recorded for this user and only let a lower guild ID
-            # to be recorded for a deterministic cross-server attribution. Higher or
-            # equal IDs are a duplicate event from the same guild
             await db.end_game_session(str(userID), gameName)
 
-        self.session[userID][gameName] = {
+        userSessions[gameName] = {
             "start_time": startTime,
             "party_size": partySize,
             "max_party_size": maxPartySize,
@@ -69,73 +56,69 @@ class Presence(commands.Cog):
             partySize,
             maxPartySize,
             startTime,
-            str(guildID)
+            str(guildID),
         )
 
+        matching = self.bot.get_cog("Matching")
         if matching:
-            await matching.check_for_match(str(userID), gameName)
+            await matching.check_for_match(userID, gameName)
 
-    # Confirms a game session has genuinely ended before removing it
-    # Waits before removing from session to account for brief focus switches
-    # where Discord temporarily drops the activity before restoring it
-    async def verify_session_end(self, userID: int, gameName: str) -> None:
+    async def _confirm_session_end(self, userID: int, gameName: str) -> None:
+        # Wait out the grace period before treating the session as truly over,
+        # to account for brief activity drops rather than the user actually stopping
         await asyncio.sleep(GAME_STOP_GRACE_PERIOD)
 
-        if userID in self.session and gameName in self.session[userID]:
-            self.session[userID].pop(gameName)
+        userSessions = self.session.get(userID)
+        if userSessions is None or gameName not in userSessions:
+            return
 
-            # Persist the session end to the database
-            await db.end_game_session(str(userID), gameName)
+        userSessions.pop(gameName)
+        await db.end_game_session(str(userID), gameName)
 
-            # Notify matching that this user left so remaining players
-            # can be re-queued for a new match after their cooldown expires
-            matching = self.bot.get_cog("Matching")
-            if matching:
-                await matching.on_session_ended(str(userID), gameName)
+        matching = self.bot.get_cog("Matching")
+        if matching:
+            # Re-queue any remaining players now that this user has left,
+            # subject to their normal cooldown in is_eligible
+            await matching.on_session_ended(userID, gameName)
 
-            # Remove the user entry entirely once no active games remain,
-            # to prevent stale empty records accumulating in memory
-            if userID in self.session and len(self.session[userID]) == 0:
-                del self.session[userID]
+        if not userSessions:
+            del self.session[userID]
 
     @commands.Cog.listener()
     async def on_presence_update(self, before: discord.Member, after: discord.Member) -> None:
         userID = before.id
         guildID = after.guild.id
 
-        update: list[tuple[str, object, object]] = [
-            (game.name, game.start, game.party)
-            for game in after.activities
-            if game.type == discord.ActivityType.playing
+        currentActivities: list[tuple[str, object, object]] = [
+            (activity.name, activity.start, activity.party)
+            for activity in after.activities
+            if activity.type == discord.ActivityType.playing
         ]
 
-        # Schedule grace period tasks for games that appeared in this update
-        for currentGame in update:
-            gameName = currentGame[0]
-            startTime = currentGame[1]
-            party = currentGame[2]
+        for gameName, startTime, party in currentActivities:
             partySize = party.get("current", 1) if party else 1
             maxPartySize = party.get("max", None) if party else None
             asyncio.create_task(
-                self.verify_session_start(
-                    update,
+                self._confirm_session_start(
+                    currentActivities,
                     userID,
                     gameName,
                     startTime,
                     partySize,
                     maxPartySize,
-                    guildID
+                    guildID,
                 )
             )
 
-        # Schedule grace period tasks for games that disappeared from this update
-        if userID in self.session:
-            gamesToRemove = [
-                currentGame for currentGame in self.session[userID]
-                if not any(currentGame == game[0] for game in update)
-            ]
-            for gameName in gamesToRemove:
-                asyncio.create_task(self.verify_session_end(userID, gameName))
+        activeGames = self.session.get(userID)
+        if not activeGames:
+            return
+
+        currentGameNames = {activity[0] for activity in currentActivities}
+        endedGames = [gameName for gameName in activeGames if gameName not in currentGameNames]
+
+        for gameName in endedGames:
+            asyncio.create_task(self._confirm_session_end(userID, gameName))
 
 
 async def setup(bot: commands.Bot) -> None:

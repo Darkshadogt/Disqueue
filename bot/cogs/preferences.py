@@ -1,12 +1,10 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-import sys
-import os
+import datetime
 from typing import Optional, Literal
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import db.database as db
+from config import DISQUEUE_LOGO_URL
 
 TIMEZONES = [
     app_commands.Choice(name="UTC", value="utc"),
@@ -54,57 +52,115 @@ REGIONS = [
     app_commands.Choice(name="Middle East", value="me"),
 ]
 
+EMBED_COLORS = {
+    "confirmed": 0x0FFB8A,  # --color-match (green) — successful/positive actions
+    "declined": 0xFF4D6A,   # --color-declined (red) — errors, blocking actions
+    "expired": 0x8888AA,    # --color-muted (grey) — neutral/informational
+    "brand": 0x8B72FF,      # --color-brand-400 — default for the main preferences view
+}
+
 
 class Preferences(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
+    def _icon_url(self) -> str | None:
+        if DISQUEUE_LOGO_URL:
+            return DISQUEUE_LOGO_URL
+        return self.bot.user.display_avatar.url if self.bot.user else None
+
+    def _themed_embed(
+        self,
+        title: str,
+        description: str | None = None,
+        color: int = EMBED_COLORS["brand"],
+    ) -> discord.Embed:
+        # Shared base so every embed in this cog carries the same author,
+        # footer, and color conventions as the rest of Disqueue
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+        embed.set_author(name="Disqueue", icon_url=self._icon_url())
+        embed.set_footer(text="Disqueue — Cross Server Matchmaking", icon_url=self._icon_url())
+        return embed
+
+    @staticmethod
+    def _yes_no(value: bool) -> str:
+        return "Yes" if value else "No"
+
     @app_commands.command(name="reset", description="Reset your user preferences")
     async def reset(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
-        await db.reset_preferences(userID)
-        await interaction.response.send_message("Your preferences have been reset.", ephemeral=True)
+
+        try:
+            await db.reset_preferences(userID)
+        except Exception:
+            errorEmbed = self._themed_embed(
+                "Reset Failed",
+                "Something went wrong resetting your preferences. Please try again in a moment.",
+                color=EMBED_COLORS["declined"],
+            )
+            await interaction.followup.send(embed=errorEmbed, ephemeral=True)
+            return
+
+        embed = self._themed_embed("Preferences Reset", "Your preferences have been reset to their defaults.", color=EMBED_COLORS["confirmed"])
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="preferences", description="View your current preferences")
     async def viewPreferences(self, interaction: discord.Interaction) -> None:
+        # Defer immediately — this command makes two DB calls before it can
+        # respond, and any slowness there previously surfaced to the user as
+        # "the application did not respond" instead of an actual message
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
-        await db.check_user(userID)
 
-        prefs = await db.get_preferences(userID)
-        blocklist = await db.get_blocklist(userID)
+        try:
+            await db.check_user(userID)
+            prefs = await db.get_preferences(userID)
+            blocklist = await db.get_blocklist(userID)
+        except Exception:
+            errorEmbed = self._themed_embed(
+                "Preferences",
+                "Something went wrong loading your preferences. Please try again in a moment.",
+                color=EMBED_COLORS["declined"],
+            )
+            await interaction.followup.send(embed=errorEmbed, ephemeral=True)
+            return
 
         dndStart = prefs["dnd_start"]
         dndEnd = prefs["dnd_end"]
-        dndDisplay = f"{int(dndStart):02d}:00 - {int(dndEnd):02d}:00" if dndStart and dndEnd else "Not set"
+        dndDisplay = f"{int(dndStart):02d}:00 – {int(dndEnd):02d}:00" if dndStart is not None and dndEnd is not None else "Not set"
 
-        embed = discord.Embed(title="Your Preferences", color=discord.Color.blue())
+        embed = self._themed_embed("Your Preferences")
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
-        embed.add_field(name="Global", value=
-            f"Enabled: {prefs['enabled']}\n"
-            f"Match Limit: {prefs['match_limit'] or 'None'}\n"
-            f"Cooldown: {prefs['match_cooldown']} min\n"
-            f"Confirmation: {prefs['match_confirmation_required']}\n"
-            f"Blocked Users: {len(blocklist)}",
-            inline=True)
+        # Row 1 — matching status at a glance
+        embed.add_field(name="Matching", value=self._yes_no(prefs["enabled"]), inline=True)
+        embed.add_field(name="Confirmation", value=self._yes_no(prefs["match_confirmation_required"]), inline=True)
+        embed.add_field(name="Blocked Users", value=str(len(blocklist)), inline=True)
 
-        embed.add_field(name="Notifications", value=
-            f"DMs: {prefs['dm_enabled']}\n"
-            f"Friend Pings: {prefs['friend_online_enabled']}",
-            inline=True)
+        # Row 2 — matching limits and pacing
+        embed.add_field(name="Match Limit", value=str(prefs["match_limit"]) if prefs["match_limit"] else "None", inline=True)
+        embed.add_field(name="Cooldown", value=f"{prefs['match_cooldown']} min", inline=True)
+        embed.add_field(name="Timezone", value=prefs["timezone"].upper(), inline=True)
 
-        embed.add_field(name="Time", value=
-            f"Timezone: {prefs['timezone'].upper()}\n"
-            f"DND: {dndDisplay}",
-            inline=True)
+        # Row 3 — notifications
+        embed.add_field(name="DM Notifications", value=self._yes_no(prefs["dm_enabled"]), inline=True)
+        embed.add_field(name="Friend Pings", value=self._yes_no(prefs["friend_online_enabled"]), inline=True)
+        embed.add_field(name="Do Not Disturb", value=dndDisplay, inline=True)
 
-        embed.add_field(name="Profile", value=
-            f"Name: {prefs['display_name'] or 'Not set'}\n"
-            f"Bio: {prefs['bio'] or 'Not set'}\n"
-            f"Language: {prefs['language'] or 'Not set'}\n"
-            f"Region: {prefs['region'] or 'Not set'}",
-            inline=True)
+        # Row 4 — public matching profile
+        embed.add_field(name="Display Name", value=prefs["display_name"] or "Not set", inline=True)
+        embed.add_field(name="Region", value=prefs["region"] or "Not set", inline=True)
+        embed.add_field(name="Language", value=prefs["language"] or "Not set", inline=True)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        embed.add_field(name="Bio", value=prefs["bio"] or "*Not set*", inline=False)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="enable", description="Start receiving match notifications")
     async def enable(self, interaction: discord.Interaction) -> None:
@@ -112,24 +168,31 @@ class Preferences(commands.Cog):
         await db.check_user(userID)
         await interaction.response.defer(ephemeral=True)
 
-        # Try sending a test DM to verify user can receive messages
+        # Try sending a test DM to verify the user can actually receive messages
         try:
-            user = await self.bot.fetch_user(userID)
+            user = await self.bot.fetch_user(interaction.user.id)
             await user.send("Your DMs are open — you're all set to receive match notifications from Disqueue!")
         except discord.Forbidden:
-            await interaction.followup.send(
-                "Could not enable matching — your DMs are closed. Please open your DMs and try again.\n"
-                "To open DMs: **User Settings → Privacy & Safety → Allow direct messages from server members**",
-                ephemeral=True
+            embed = self._themed_embed(
+                "Matching Not Enabled",
+                (
+                    "Could not enable matching — your DMs are closed.\n"
+                    "**To open DMs:** User Settings → Privacy & Safety → Allow direct messages from server members."
+                ),
+                color=EMBED_COLORS["declined"],
             )
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         await db.update_preference(userID, "enabled", True)
         await db.update_preference(userID, "dm_enabled", True)
-        await interaction.followup.send(
-            "Matching enabled — we sent you a DM to confirm everything is working.",
-            ephemeral=True
+
+        embed = self._themed_embed(
+            "Matching Enabled",
+            "We sent you a DM to confirm everything is working.",
+            color=EMBED_COLORS["confirmed"],
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="disable", description="Stop receiving match notifications")
     async def disable(self, interaction: discord.Interaction) -> None:
@@ -137,27 +200,27 @@ class Preferences(commands.Cog):
         await db.check_user(userID)
         await db.update_preference(userID, "enabled", False)
         await db.update_preference(userID, "dm_enabled", False)
-        await interaction.response.send_message(
-            "Matching disabled — you won't receive any match notifications.",
-            ephemeral=True
-        )
+
+        embed = self._themed_embed("Matching Disabled", "You won't receive any match notifications.", color=EMBED_COLORS["expired"])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="block", description="Block a user from being matched with you")
     async def block(self, interaction: discord.Interaction, user: discord.Member) -> None:
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
-        if user.id == userID:
+        if str(user.id) == userID:
             await interaction.response.send_message("You can't block yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
-        if user.id in blocklist:
+        if str(user.id) in blocklist:
             await interaction.response.send_message(f"{user.display_name} is already in your blocklist.", ephemeral=True)
             return
 
-        await db.add_to_blocklist(userID, user.id)
-        await interaction.response.send_message(f"{user.display_name} has been added to your blocklist.", ephemeral=True)
+        await db.add_to_blocklist(userID, str(user.id))
+        embed = self._themed_embed("User Blocked", f"**{user.display_name}** has been added to your blocklist.", color=EMBED_COLORS["declined"])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="unblock", description="Unblock a user so they can be matched with you again")
     async def unblock(self, interaction: discord.Interaction, user: discord.Member) -> None:
@@ -165,27 +228,27 @@ class Preferences(commands.Cog):
         await db.check_user(userID)
 
         blocklist = await db.get_blocklist(userID)
-        if user.id not in blocklist:
+        if str(user.id) not in blocklist:
             await interaction.response.send_message(f"{user.display_name} is not in your blocklist.", ephemeral=True)
             return
 
-        await db.remove_from_blocklist(userID, user.id)
-        await interaction.response.send_message(
-            f"{user.display_name} has been unblocked and can be matched with you again.",
-            ephemeral=True
+        await db.remove_from_blocklist(userID, str(user.id))
+        embed = self._themed_embed(
+            "User Unblocked", f"**{user.display_name}** can be matched with you again.", color=EMBED_COLORS["confirmed"]
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="blockid", description="Block a user by their ID from being matched with you")
     async def blockID(self, interaction: discord.Interaction, user_id: int) -> None:
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
-        if user_id == userID:
+        if str(user_id) == userID:
             await interaction.response.send_message("You can't block yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
-        if user_id in blocklist:
+        if str(user_id) in blocklist:
             await interaction.response.send_message("That user is already blocked.", ephemeral=True)
             return
 
@@ -195,20 +258,21 @@ class Preferences(commands.Cog):
             await interaction.response.send_message("No Discord user found with that ID.", ephemeral=True)
             return
 
-        await db.add_to_blocklist(userID, user_id)
-        await interaction.response.send_message(f"{user.display_name} has been blocked.", ephemeral=True)
+        await db.add_to_blocklist(userID, str(user_id))
+        embed = self._themed_embed("User Blocked", f"**{user.display_name}** has been blocked.", color=EMBED_COLORS["declined"])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="unblockid", description="Unblock a user by their ID so they can be matched with you again")
     async def unblockID(self, interaction: discord.Interaction, user_id: int) -> None:
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
-        if user_id == userID:
+        if str(user_id) == userID:
             await interaction.response.send_message("You can't unblock yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
-        if user_id not in blocklist:
+        if str(user_id) not in blocklist:
             await interaction.response.send_message("That user is not in your blocklist.", ephemeral=True)
             return
 
@@ -216,12 +280,14 @@ class Preferences(commands.Cog):
             user = await self.bot.fetch_user(user_id)
         except discord.NotFound:
             # User no longer exists on Discord — still remove from blocklist
-            await db.remove_from_blocklist(userID, user_id)
-            await interaction.response.send_message("User removed from your blocklist.", ephemeral=True)
+            await db.remove_from_blocklist(userID, str(user_id))
+            embed = self._themed_embed("User Unblocked", "That user has been removed from your blocklist.", color=EMBED_COLORS["confirmed"])
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        await db.remove_from_blocklist(userID, user_id)
-        await interaction.response.send_message(f"{user.display_name} has been unblocked.", ephemeral=True)
+        await db.remove_from_blocklist(userID, str(user_id))
+        embed = self._themed_embed("User Unblocked", f"**{user.display_name}** has been unblocked.", color=EMBED_COLORS["confirmed"])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="set-match-limit", description="Sets the number of matches a user can be matched in a day (leave blank to remove limit)")
     async def setMatchLimit(self, interaction: discord.Interaction, limit: Optional[int] = None) -> None:
@@ -266,12 +332,12 @@ class Preferences(commands.Cog):
         if setting == "on":
             await interaction.response.send_message(
                 "Confirmation enabled — you'll be asked to accept or decline each match.",
-                ephemeral=True
+                ephemeral=True,
             )
         else:
             await interaction.response.send_message(
                 "Confirmation disabled — you'll be automatically matched.",
-                ephemeral=True
+                ephemeral=True,
             )
 
     @app_commands.command(name="set-game-mode", description="Selects which mode you want to be matched for")
@@ -311,7 +377,7 @@ class Preferences(commands.Cog):
         await db.update_preference(userID, "dnd_end", int(end_time.value))
         await interaction.response.send_message(
             f"DND time set from {start_time.name} to {end_time.name}.",
-            ephemeral=True
+            ephemeral=True,
         )
 
     @app_commands.command(name="unset-dnd", description="Unsets your DND time")

@@ -1,14 +1,8 @@
 import asyncio
-import os
-import sys
 import discord
 from discord.ext import commands
-from config import token
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import token, APPLICATION_ID
 import db.database as db
-
-APPLICATION_ID = 1515863311307112558
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -36,7 +30,6 @@ async def on_ready():
 
         synced = True
 
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 cogs = [
     "cogs.general",
