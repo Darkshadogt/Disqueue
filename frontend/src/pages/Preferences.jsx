@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import AppShell from "../components/AppShell";
 import api from "../api";
 import { useRealTime } from "../contexts/RealTimeContext";
-import { Dropdown } from "../components/ui";
+import { Dropdown } from "../components/UI";
 import {
   IconSwitchVertical,
   IconBell,
