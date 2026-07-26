@@ -8,9 +8,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db.database as db
 
-intents = discord.Intents.default()
-intents.presences = True
-intents.members = True
+intents = discord.Intents.all()
 
 bot = commands.Bot(
     command_prefix="/",
