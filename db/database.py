@@ -22,6 +22,7 @@ async def create_pool() -> None:
         min_size=POOL_MIN_SIZE,
         max_size=POOL_MAX_SIZE,
         command_timeout=COMMAND_TIMEOUT_SECONDS,
+        statement_cache_size=0,
     )
 
 
