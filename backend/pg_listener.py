@@ -17,7 +17,12 @@ async def start_listener():
     This connection is separate from the app's regular pooled connection
     since LISTEN/NOTIFY requires holding one connection open indefinitely
     """
-    conn = await asyncpg.connect(os.getenv("DATABASE_URL"))
+    # LISTEN/NOTIFY needs a real, stable session -- Supabase's transaction-mode
+    # pooler can recycle the underlying Postgres connection between statements, which can
+    # silently drop this subscription with no error. Use a session-mode
+    # connection string here instead
+    listener_url = os.getenv("LISTENER_DATABASE_URL") or os.getenv("DATABASE_URL")
+    conn = await asyncpg.connect(listener_url, statement_cache_size=0)
 
     async def handle_preferences(connection, pid, channel, payload):
         try:
