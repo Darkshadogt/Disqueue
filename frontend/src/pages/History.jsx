@@ -3,7 +3,7 @@ import AppShell from "../components/AppShell";
 import { Skeleton } from "../components/Skeleton";
 import { ErrorState } from "../components/ErrorState";
 import api from "../api";
-import { Dropdown, DateRangePicker } from "../components/ui";
+import { Dropdown, DateRangePicker } from "../components/UI";
 import { useRealTime } from "../contexts/RealTimeContext";
 import {
   IconChevronDown,
