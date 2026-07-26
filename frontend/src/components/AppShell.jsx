@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import Toast from "./Toast";
@@ -74,7 +75,9 @@ function AppShellInner({ children }) {
             }`}
           >
             <Topbar user={user} onMenuClick={() => setSidebarOpen(true)} />
-            <main className="flex-1 overflow-y-auto scroll-thin px-6 py-6 lg:px-8">{children}</main>
+            <main className="flex-1 overflow-y-auto scroll-thin px-6 py-6 lg:px-8">
+              {children ?? <Outlet />}
+            </main>
           </div>
 
           <Toast />

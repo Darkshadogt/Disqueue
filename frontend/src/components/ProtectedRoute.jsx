@@ -1,3 +1,4 @@
+import { Outlet } from "react-router-dom";
 import { isLoggedIn } from "../utils/jwt";
 
 import { LOGIN_URL } from "../config"
@@ -14,5 +15,5 @@ export default function ProtectedRoute({ children }) {
     return null;
   }
 
-  return children;
+  return children ?? <Outlet />;
 }

@@ -11,12 +11,13 @@ import Features from './pages/Features'
 import Commands from './pages/Commands'
 import Support from './pages/Support'
 import Callback from './pages/Callback'
-import Dashboard from './pages/Dashboard'
-import Preferences from './pages/Preferences'
-import History from './pages/History'
-import Live from './pages/Live'
-import Servers from './pages/Servers'
+import { DashboardContent } from './pages/Dashboard'
+import { PreferencesContent } from './pages/Preferences'
+import { HistoryContent } from './pages/History'
+import { LiveContent } from './pages/Live'
+import { ServersContent } from './pages/Servers'
 import ProtectedRoute from './components/ProtectedRoute'
+import AppShell from './components/AppShell'
 
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -31,11 +32,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               <Route path="/commands" element={<Commands />} />
               <Route path="/support" element={<Support />} />
               <Route path="/callback" element={<Callback />} />
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/servers" element={<ProtectedRoute><Servers /></ProtectedRoute>} />
-              <Route path="/preferences" element={<ProtectedRoute><Preferences /></ProtectedRoute>} />
-              <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
-              <Route path="/live" element={<ProtectedRoute><Live /></ProtectedRoute>} />
+              <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+                <Route path="/dashboard" element={<DashboardContent />} />
+                <Route path="/servers" element={<ServersContent />} />
+                <Route path="/preferences" element={<PreferencesContent />} />
+                <Route path="/history" element={<HistoryContent />} />
+                <Route path="/live" element={<LiveContent />} />
+              </Route>
+
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
