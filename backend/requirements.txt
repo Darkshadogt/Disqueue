@@ -5,3 +5,4 @@ cryptography==49.0.0
 httpx==0.28.1
 asyncpg==0.31.0
 python-dotenv==1.2.2
+websockets==16.1.1
