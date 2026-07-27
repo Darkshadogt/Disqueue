@@ -114,8 +114,8 @@ npm run dev
 Each service deploys independently and points at the same Supabase instance.
 
 - **Bot** → Bot-Hosting.net
-- **Backend** → Render, `/health` kept warm via UptimeRobot on the free tier
-- **Frontend** → Vercel, needs a SPA rewrite rule (`vercel.json`) for client-side routes
+- **Backend** → Render, UptimeRobot
+- **Frontend** → Vercel
 - **Database** → Supabase
 
 </details>
