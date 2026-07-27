@@ -161,7 +161,6 @@ Each service deploys independently and points at the same Supabase instance.
 - [ ] Ranked skill-based matching
 - [ ] Server-level configuration
 - [ ] Match feedback / rating system
-- [ ] Mobile-friendly dashboard polish
 
 <br />
 
