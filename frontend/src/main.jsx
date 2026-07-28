@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { SearchProvider } from './contexts/SearchContext'
+import { HelmetProvider } from 'react-helmet-async'
 import ErrorBoundary from "./components/ErrorBoundary";
 import './index.css'
 
@@ -22,28 +23,29 @@ import AppShell from './components/AppShell'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ErrorBoundary>
-        <SearchProvider>
-          <BrowserRouter>
-            <ScrollReset />
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/features" element={<Features />} />
-              <Route path="/commands" element={<Commands />} />
-              <Route path="/support" element={<Support />} />
-              <Route path="/callback" element={<Callback />} />
-              <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-                <Route path="/dashboard" element={<DashboardContent />} />
-                <Route path="/servers" element={<ServersContent />} />
-                <Route path="/preferences" element={<PreferencesContent />} />
-                <Route path="/history" element={<HistoryContent />} />
-                <Route path="/live" element={<LiveContent />} />
-              </Route>
-
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </SearchProvider>
-    </ErrorBoundary>
+    <HelmetProvider>
+      <ErrorBoundary>
+          <SearchProvider>
+            <BrowserRouter>
+              <ScrollReset />
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/features" element={<Features />} />
+                <Route path="/commands" element={<Commands />} />
+                <Route path="/support" element={<Support />} />
+                <Route path="/callback" element={<Callback />} />
+                <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+                  <Route path="/dashboard" element={<DashboardContent />} />
+                  <Route path="/servers" element={<ServersContent />} />
+                  <Route path="/preferences" element={<PreferencesContent />} />
+                  <Route path="/history" element={<HistoryContent />} />
+                  <Route path="/live" element={<LiveContent />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </SearchProvider>
+      </ErrorBoundary>
+    </HelmetProvider>
   </React.StrictMode>
 )

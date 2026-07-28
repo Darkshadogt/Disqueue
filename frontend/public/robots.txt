@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /preferences
+Disallow: /history
+Disallow: /live
+Disallow: /servers
+Disallow: /callback
+ 
+Sitemap: https://disqueue.vercel.app/sitemap.xml

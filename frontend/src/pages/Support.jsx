@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import Navbar from "../components/Navbar";
 import {
   IconBrandDiscord,
@@ -36,6 +37,14 @@ const RESOURCES = [
 export default function Support() {
   return (
     <div className="min-h-screen bg-void-page text-primary overflow-x-hidden">
+      <Helmet>
+        <title>Support — Get Help with Disqueue</title>
+        <meta
+          name="description"
+          content="Need help finding people to play with, troubleshooting setup, or reporting a bug? Join the Disqueue support server."
+        />
+        <link rel="canonical" href="https://disqueue.vercel.app/support" />
+      </Helmet>
       <Navbar />
 
       {/* Header */}

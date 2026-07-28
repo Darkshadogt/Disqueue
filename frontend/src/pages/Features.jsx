@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import Navbar from "../components/Navbar";
 import {
   IconWorldCheck,
@@ -33,6 +34,14 @@ const COMPARE = [
 export default function Features() {
   return (
     <div className="min-h-screen bg-void-page text-primary overflow-x-hidden">
+      <Helmet>
+        <title>Features — Automatic Cross-Server Matchmaking | Disqueue</title>
+        <meta
+          name="description"
+          content="See how Disqueue finds people to play with automatically: real-time presence detection, smart matchmaking, and instant invites across every Discord server it's in."
+        />
+        <link rel="canonical" href="https://disqueue.vercel.app/features" />
+      </Helmet>
       <Navbar />
 
       {/* Header */}
