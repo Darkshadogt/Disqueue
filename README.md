@@ -11,9 +11,11 @@
 
 ## About
 
-Most matchmaking bots make you run a command and sit in a queue, hoping someone else in *your* server does the same at the same time. Disqueue watches Discord's own presence data instead — the moment two people across *any* server it's in are playing the same game, they're matched. No command, no queue, nothing to remember.
+Disqueue is an automated Discord matchmaking bot that pairs players the moment they start playing a game — no queue, no commands, no waiting. Unlike traditional Discord LFG or queue bots, Disqueue uses Discord presence data to detect when two users across any server are playing the same game and instantly matches them.
 
-It also isn't just a bot. A live web dashboard, built on the same real-time data, gives users a place to manage preferences and track match history outside of Discord too.
+It also includes a real‑time web dashboard, powered by FastAPI and WebSockets, where users can manage preferences, view match history, and customize their matchmaking experience.
+
+Disqueue is designed for gaming communities, competitive teams, co‑op players, and servers that want hands‑free, presence‑based matchmaking.
 
 <br />
 
@@ -22,9 +24,9 @@ It also isn't just a bot. A live web dashboard, built on the same real-time data
 - Automatic presence detection — matching starts the moment you start playing
 - Cross-server matching — pairs players across every server Disqueue is in
 - Configurable rules — region, language, mode, cooldowns, limits, DND hours
-- Optional match confirmation via DM before a match is finalized
+- Optional match confirmation via DM
 - Blocklist support
-- Live web dashboard, synced in real time over WebSocket
+- Real‑time web dashboard (React + WebSocket)
 - Private match threads for each confirmed pair
 
 <br />
@@ -44,7 +46,8 @@ flowchart TB
     API <--> |REST + WebSocket| Web
 ```
 
-The bot and backend connect to the same database independently. Postgres triggers `NOTIFY` writes — new matches, preference changes, notifications — which the backend picks up via a dedicated `LISTEN` connection and pushes to clients over WebSocket.
+Disqueue’s bot and backend share a single PostgreSQL database.
+Postgres triggers `NOTIFY` events for new matches, preference updates, and notifications, which the backend listens for and pushes to clients in real time.
 
 <br />
 
