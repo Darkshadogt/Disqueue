@@ -55,7 +55,7 @@ app.include_router(notifications.router)
 app.include_router(ws.router)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     # This just needs to prove the process is alive and responding
     # so UptimeRobot's pings stay cheap and don't compete with real
