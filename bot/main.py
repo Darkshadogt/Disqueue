@@ -1,10 +1,13 @@
 import asyncio
-import os
+import os, sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import discord
 from aiohttp import web
 from discord.ext import commands
 from config import token, APPLICATION_ID
 import db.database as db
+
 
 intents = discord.Intents.default()
 intents.presences = True
