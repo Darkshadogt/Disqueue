@@ -1,14 +1,14 @@
 import asyncio
+import os
 import discord
+from aiohttp import web
 from discord.ext import commands
 from config import token, APPLICATION_ID
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db.database as db
 
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.presences = True
+intents.members = True
 
 bot = commands.Bot(
     command_prefix="/",
@@ -41,11 +41,27 @@ cogs = [
     "cogs.guild_events",
 ]
 
+
+async def health(request):
+    return web.Response(text="ok")
+
+
+async def start_health_server():
+    app = web.Application()
+    app.router.add_get("/health", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+
 async def main():
     async with bot:
         await db.create_pool()
         for cog in cogs:
             await bot.load_extension(cog)
+        asyncio.create_task(start_health_server())
         await bot.start(token)
 
 if __name__ == "__main__":
