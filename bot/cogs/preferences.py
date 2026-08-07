@@ -170,8 +170,7 @@ class Preferences(commands.Cog):
 
         # Try sending a test DM to verify the user can actually receive messages
         try:
-            user = await self.bot.fetch_user(interaction.user.id)
-            await user.send("Your DMs are open — you're all set to receive match notifications from Disqueue!")
+            await interaction.user.send("Your DMs are open — you're all set to receive match notifications from Disqueue!")
         except discord.Forbidden:
             embed = self._themed_embed(
                 "Matching Not Enabled",
@@ -181,8 +180,7 @@ class Preferences(commands.Cog):
                 ),
                 color=EMBED_COLORS["declined"],
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
+            return await interaction.followup.send(embed=embed, ephemeral=True)
 
         await db.update_preference(userID, "enabled", True)
         await db.update_preference(userID, "dm_enabled", True)
