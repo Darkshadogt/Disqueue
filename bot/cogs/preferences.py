@@ -164,9 +164,9 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="enable", description="Start receiving match notifications")
     async def enable(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
-        await interaction.response.defer(ephemeral=True)
 
         # Try sending a test DM to verify the user can actually receive messages
         try:
@@ -196,84 +196,89 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="disable", description="Stop receiving match notifications")
     async def disable(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "enabled", False)
         await db.update_preference(userID, "dm_enabled", False)
 
         embed = self._themed_embed("Matching Disabled", "You won't receive any match notifications.", color=EMBED_COLORS["expired"])
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="block", description="Block a user from being matched with you")
     async def block(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if str(user.id) == userID:
-            await interaction.response.send_message("You can't block yourself.", ephemeral=True)
+            await interaction.followup.send("You can't block yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
         if str(user.id) in blocklist:
-            await interaction.response.send_message(f"{user.display_name} is already in your blocklist.", ephemeral=True)
+            await interaction.followup.send(f"{user.display_name} is already in your blocklist.", ephemeral=True)
             return
 
         await db.add_to_blocklist(userID, str(user.id))
         embed = self._themed_embed("User Blocked", f"**{user.display_name}** has been added to your blocklist.", color=EMBED_COLORS["declined"])
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="unblock", description="Unblock a user so they can be matched with you again")
     async def unblock(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         blocklist = await db.get_blocklist(userID)
         if str(user.id) not in blocklist:
-            await interaction.response.send_message(f"{user.display_name} is not in your blocklist.", ephemeral=True)
+            await interaction.followup.send(f"{user.display_name} is not in your blocklist.", ephemeral=True)
             return
 
         await db.remove_from_blocklist(userID, str(user.id))
         embed = self._themed_embed(
             "User Unblocked", f"**{user.display_name}** can be matched with you again.", color=EMBED_COLORS["confirmed"]
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="blockid", description="Block a user by their ID from being matched with you")
     async def blockID(self, interaction: discord.Interaction, user_id: int) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if str(user_id) == userID:
-            await interaction.response.send_message("You can't block yourself.", ephemeral=True)
+            await interaction.followup.send("You can't block yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
         if str(user_id) in blocklist:
-            await interaction.response.send_message("That user is already blocked.", ephemeral=True)
+            await interaction.followup.send("That user is already blocked.", ephemeral=True)
             return
 
         try:
             user = await self.bot.fetch_user(user_id)
         except discord.NotFound:
-            await interaction.response.send_message("No Discord user found with that ID.", ephemeral=True)
+            await interaction.followup.send("No Discord user found with that ID.", ephemeral=True)
             return
 
         await db.add_to_blocklist(userID, str(user_id))
         embed = self._themed_embed("User Blocked", f"**{user.display_name}** has been blocked.", color=EMBED_COLORS["declined"])
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="unblockid", description="Unblock a user by their ID so they can be matched with you again")
     async def unblockID(self, interaction: discord.Interaction, user_id: int) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if str(user_id) == userID:
-            await interaction.response.send_message("You can't unblock yourself.", ephemeral=True)
+            await interaction.followup.send("You can't unblock yourself.", ephemeral=True)
             return
 
         blocklist = await db.get_blocklist(userID)
         if str(user_id) not in blocklist:
-            await interaction.response.send_message("That user is not in your blocklist.", ephemeral=True)
+            await interaction.followup.send("That user is not in your blocklist.", ephemeral=True)
             return
 
         try:
@@ -282,36 +287,38 @@ class Preferences(commands.Cog):
             # User no longer exists on Discord — still remove from blocklist
             await db.remove_from_blocklist(userID, str(user_id))
             embed = self._themed_embed("User Unblocked", "That user has been removed from your blocklist.", color=EMBED_COLORS["confirmed"])
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         await db.remove_from_blocklist(userID, str(user_id))
         embed = self._themed_embed("User Unblocked", f"**{user.display_name}** has been unblocked.", color=EMBED_COLORS["confirmed"])
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(name="set-match-limit", description="Sets the number of matches a user can be matched in a day (leave blank to remove limit)")
     async def setMatchLimit(self, interaction: discord.Interaction, limit: Optional[int] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if limit is not None and limit <= 0:
-            await interaction.response.send_message("Limit must be a positive number.", ephemeral=True)
+            await interaction.followup.send("Limit must be a positive number.", ephemeral=True)
             return
 
         await db.update_preference(userID, "match_limit", limit)
 
         if limit is None:
-            await interaction.response.send_message("Match limit removed — no daily limit set.", ephemeral=True)
+            await interaction.followup.send("Match limit removed — no daily limit set.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Match limit set to {limit} per day.", ephemeral=True)
+            await interaction.followup.send(f"Match limit set to {limit} per day.", ephemeral=True)
 
     @app_commands.command(name="set-match-cooldown", description="Sets the cooldown time before a user can be matched again (leave blank to reset to default)")
     async def setMatchCooldown(self, interaction: discord.Interaction, time: Optional[int] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if time is not None and time <= 0:
-            await interaction.response.send_message("Cooldown must be a positive number.", ephemeral=True)
+            await interaction.followup.send("Cooldown must be a positive number.", ephemeral=True)
             return
 
         # Default cooldown is 2 minutes — reset to this if no value provided
@@ -319,23 +326,25 @@ class Preferences(commands.Cog):
         await db.update_preference(userID, "match_cooldown", cooldown)
 
         if time is None:
-            await interaction.response.send_message("Match cooldown reset to the default (2 minutes).", ephemeral=True)
+            await interaction.followup.send("Match cooldown reset to the default (2 minutes).", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Match cooldown set to {time} minutes.", ephemeral=True)
+            await interaction.followup.send(f"Match cooldown set to {time} minutes.", ephemeral=True)
 
     @app_commands.command(name="match-confirmation", description="Toggle whether you confirm or auto-accept matches")
     async def matchConfirmation(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
+        await interaction.response.defer(ephemeral=True)
+
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "match_confirmation_required", setting == "on")
 
         if setting == "on":
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Confirmation enabled — you'll be asked to accept or decline each match.",
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Confirmation disabled — you'll be automatically matched.",
                 ephemeral=True,
             )
@@ -343,94 +352,104 @@ class Preferences(commands.Cog):
     @app_commands.command(name="set-game-mode", description="Selects which mode you want to be matched for")
     @app_commands.choices(mode=MODES)
     async def setGameMode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "game_mode", mode.value)
-        await interaction.response.send_message(f"Your preferred mode has been set to {mode.name}.", ephemeral=True)
+        await interaction.followup.send(f"Your preferred mode has been set to {mode.name}.", ephemeral=True)
 
     @app_commands.command(name="friend-notifications", description="Toggle notifications when friends start playing the same game")
     async def friendPing(self, interaction: discord.Interaction, setting: Literal["on", "off"]) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "friend_online_enabled", setting == "on")
-        await interaction.response.send_message(f"Friend notifications turned {setting}.", ephemeral=True)
+        await interaction.followup.send(f"Friend notifications turned {setting}.", ephemeral=True)
 
     @app_commands.command(name="set-timezone", description="Sets your timezone for better matching")
     @app_commands.choices(timezone=TIMEZONES)
     async def setTimezone(self, interaction: discord.Interaction, timezone: app_commands.Choice[str]) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "timezone", timezone.value)
-        await interaction.response.send_message(f"Your preferred timezone has been set to {timezone.name}.", ephemeral=True)
+        await interaction.followup.send(f"Your preferred timezone has been set to {timezone.name}.", ephemeral=True)
 
     @app_commands.command(name="set-dnd", description="Sets what time you would like to stop being matched")
     @app_commands.choices(start_time=HOURS, end_time=HOURS)
     async def setDND(self, interaction: discord.Interaction, start_time: app_commands.Choice[str], end_time: app_commands.Choice[str]) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
 
         if start_time.value == end_time.value:
-            await interaction.response.send_message("Start and end time can't be the same.", ephemeral=True)
+            await interaction.followup.send("Start and end time can't be the same.", ephemeral=True)
             return
 
         await db.update_preference(userID, "dnd_start", int(start_time.value))
         await db.update_preference(userID, "dnd_end", int(end_time.value))
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"DND time set from {start_time.name} to {end_time.name}.",
             ephemeral=True,
         )
 
     @app_commands.command(name="unset-dnd", description="Unsets your DND time")
     async def unsetDND(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "dnd_start", None)
         await db.update_preference(userID, "dnd_end", None)
-        await interaction.response.send_message("Your DND time has been cleared.", ephemeral=True)
+        await interaction.followup.send("Your DND time has been cleared.", ephemeral=True)
 
     @app_commands.command(name="set-bio", description="Set a short bio visible to matched players")
     async def setBio(self, interaction: discord.Interaction, bio: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+
         if len(bio) > 150:
-            await interaction.response.send_message("Bio must be 150 characters or less.", ephemeral=True)
+            await interaction.followup.send("Bio must be 150 characters or less.", ephemeral=True)
             return
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "bio", bio)
-        await interaction.response.send_message(f"Bio updated: {bio}", ephemeral=True)
+        await interaction.followup.send(f"Bio updated: {bio}", ephemeral=True)
 
     @app_commands.command(name="set-name", description="Set a display name for your matching profile")
     async def setName(self, interaction: discord.Interaction, name: str) -> None:
+        await interaction.response.defer(ephemeral=True)
         if len(name) > 32:
-            await interaction.response.send_message("Name must be 32 characters or less.", ephemeral=True)
+            await interaction.followup.send("Name must be 32 characters or less.", ephemeral=True)
             return
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "display_name", name)
-        await interaction.response.send_message(f"Display name set to: {name}", ephemeral=True)
+        await interaction.followup.send(f"Display name set to: {name}", ephemeral=True)
 
     @app_commands.command(name="set-region", description="Set your region for ranked matching (leave empty to clear)")
     @app_commands.choices(region=REGIONS)
     async def setRegion(self, interaction: discord.Interaction, region: Optional[app_commands.Choice[str]] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "region", region.value if region else None)
 
         if region is None:
-            await interaction.response.send_message("Region preference cleared — you'll be matched with anyone.", ephemeral=True)
+            await interaction.followup.send("Region preference cleared — you'll be matched with anyone.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Region set to: {region.name}", ephemeral=True)
+            await interaction.followup.send(f"Region set to: {region.name}", ephemeral=True)
 
     @app_commands.command(name="set-language", description="Set your preferred language for matching (leave empty to clear)")
     @app_commands.choices(language=LANGUAGES)
     async def setLanguage(self, interaction: discord.Interaction, language: Optional[app_commands.Choice[str]] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
         await db.check_user(userID)
         await db.update_preference(userID, "language", language.value if language else None)
 
         if language is None:
-            await interaction.response.send_message("Language preference cleared — you'll be matched with anyone.", ephemeral=True)
+            await interaction.followup.send("Language preference cleared — you'll be matched with anyone.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"Language set to: {language.name}", ephemeral=True)
+            await interaction.followup.send(f"Language set to: {language.name}", ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

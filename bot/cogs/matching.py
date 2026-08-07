@@ -760,9 +760,9 @@ class Matching(commands.Cog):
     @app_commands.command(name="match-history", description="View your recent matches")
     async def matchHistory(self, interaction: discord.Interaction) -> None:
         # Defer immediately — Discord only gives a 3-second window to
-        # acknowledge an interaction, and DB calls can occasionally run long.
+        # acknowledge an interaction, and DB calls can occasionally run long
         # Without this, a slow or failing query shows the user "the
-        # application did not respond" instead of an actual message.
+        # application did not respond" instead of an actual message
         await interaction.response.defer(ephemeral=True)
 
         userID = interaction.user.id
