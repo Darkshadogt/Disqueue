@@ -23,6 +23,7 @@ synced = False
 
 @bot.event
 async def on_ready():
+    await bot.tree.clear_commands(guild=discord.Object(1515864853779054692))
     global synced
 
     # Prevent repeated syncs on reconnects
