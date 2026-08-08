@@ -23,7 +23,6 @@ synced = False
 
 @bot.event
 async def on_ready():
-    await bot.tree.clear_commands(guild=discord.Object(1515864853779054692))
     global synced
 
     # Prevent repeated syncs on reconnects
@@ -35,6 +34,10 @@ async def on_ready():
             print(f"Sync failed: {e}")
 
         synced = True
+
+@bot.event
+async def on_interaction(interaction):
+    print("INTERACTION RECEIVED:", interaction.data)
 
 
 cogs = [
