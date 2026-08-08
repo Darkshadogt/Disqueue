@@ -75,8 +75,6 @@ class Preferences(commands.Cog):
         description: str | None = None,
         color: int = EMBED_COLORS["brand"],
     ) -> discord.Embed:
-        # Shared base so every embed in this cog carries the same author,
-        # footer, and color conventions as the rest of Disqueue
         embed = discord.Embed(
             title=title,
             description=description,
@@ -112,9 +110,6 @@ class Preferences(commands.Cog):
 
     @app_commands.command(name="preferences", description="View your current preferences")
     async def viewPreferences(self, interaction: discord.Interaction) -> None:
-        # Defer immediately — this command makes two DB calls before it can
-        # respond, and any slowness there previously surfaced to the user as
-        # "the application did not respond" instead of an actual message
         await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
 
@@ -138,22 +133,18 @@ class Preferences(commands.Cog):
         embed = self._themed_embed("Your Preferences")
         embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
-        # Row 1 — matching status at a glance
         embed.add_field(name="Matching", value=self._yes_no(prefs["enabled"]), inline=True)
         embed.add_field(name="Confirmation", value=self._yes_no(prefs["match_confirmation_required"]), inline=True)
         embed.add_field(name="Blocked Users", value=str(len(blocklist)), inline=True)
 
-        # Row 2 — matching limits and pacing
         embed.add_field(name="Match Limit", value=str(prefs["match_limit"]) if prefs["match_limit"] else "None", inline=True)
         embed.add_field(name="Cooldown", value=f"{prefs['match_cooldown']} min", inline=True)
         embed.add_field(name="Timezone", value=prefs["timezone"].upper(), inline=True)
 
-        # Row 3 — notifications
         embed.add_field(name="DM Notifications", value=self._yes_no(prefs["dm_enabled"]), inline=True)
         embed.add_field(name="Friend Pings", value=self._yes_no(prefs["friend_online_enabled"]), inline=True)
         embed.add_field(name="Do Not Disturb", value=dndDisplay, inline=True)
 
-        # Row 4 — public matching profile
         embed.add_field(name="Display Name", value=prefs["display_name"] or "Not set", inline=True)
         embed.add_field(name="Region", value=prefs["region"] or "Not set", inline=True)
         embed.add_field(name="Language", value=prefs["language"] or "Not set", inline=True)
@@ -166,9 +157,19 @@ class Preferences(commands.Cog):
     async def enable(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         userID = str(interaction.user.id)
-        await db.check_user(userID)
 
-        # Try sending a test DM to verify the user can actually receive messages
+        try:
+            await db.check_user(userID)
+        except Exception as e:
+            print(f"[/enable] check_user failed: {e!r}")
+            errorEmbed = self._themed_embed(
+                "Matching Not Enabled",
+                "Something went wrong setting up your profile. Please try again in a moment.",
+                color=EMBED_COLORS["declined"],
+            )
+            await interaction.followup.send(embed=errorEmbed, ephemeral=True)
+            return
+        
         try:
             await interaction.user.send("Your DMs are open — you're all set to receive match notifications from Disqueue!")
         except discord.Forbidden:
@@ -180,10 +181,21 @@ class Preferences(commands.Cog):
                 ),
                 color=EMBED_COLORS["declined"],
             )
-            return await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
 
-        await db.update_preference(userID, "enabled", True)
-        await db.update_preference(userID, "dm_enabled", True)
+        try:
+            await db.update_preference(userID, "enabled", True)
+            await db.update_preference(userID, "dm_enabled", True)
+        except Exception as e:
+            print(f"[/enable] update_preference failed: {e!r}")
+            errorEmbed = self._themed_embed(
+                "Matching Not Enabled",
+                "We sent your DM, but couldn't save your preference. Please try again in a moment.",
+                color=EMBED_COLORS["declined"],
+            )
+            await interaction.followup.send(embed=errorEmbed, ephemeral=True)
+            return
 
         embed = self._themed_embed(
             "Matching Enabled",
@@ -282,7 +294,6 @@ class Preferences(commands.Cog):
         try:
             user = await self.bot.fetch_user(user_id)
         except discord.NotFound:
-            # User no longer exists on Discord — still remove from blocklist
             await db.remove_from_blocklist(userID, str(user_id))
             embed = self._themed_embed("User Unblocked", "That user has been removed from your blocklist.", color=EMBED_COLORS["confirmed"])
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -319,7 +330,6 @@ class Preferences(commands.Cog):
             await interaction.followup.send("Cooldown must be a positive number.", ephemeral=True)
             return
 
-        # Default cooldown is 2 minutes — reset to this if no value provided
         cooldown = time if time is not None else 2
         await db.update_preference(userID, "match_cooldown", cooldown)
 
