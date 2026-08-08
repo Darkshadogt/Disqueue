@@ -35,11 +35,6 @@ async def on_ready():
 
         synced = True
 
-@bot.event
-async def on_interaction(interaction):
-    print("INTERACTION RECEIVED:", interaction.data)
-
-
 cogs = [
     "cogs.general",
     "cogs.presence",
